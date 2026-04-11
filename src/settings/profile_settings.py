@@ -3,19 +3,23 @@ import flet as ft
 _KEY_PREFIX = "maicampus.profile."
 
 
-async def load_profile(page: ft.Page) -> dict:
+async def load_profile(page: ft.Page = None) -> dict:
     """Load saved profile from client storage."""
-    name = await page.shared_preferences.get(f"{_KEY_PREFIX}name") or ""
-    email = await page.shared_preferences.get(f"{_KEY_PREFIX}email") or ""
-    pic_path = await page.shared_preferences.get(f"{_KEY_PREFIX}pic_path") or ""
+    from prefs import get_prefs
+    prefs = get_prefs()
+    name = await prefs.get(f"{_KEY_PREFIX}name") or ""
+    email = await prefs.get(f"{_KEY_PREFIX}email") or ""
+    pic_path = await prefs.get(f"{_KEY_PREFIX}pic_path") or ""
     return {"name": name, "email": email, "pic_path": pic_path}
 
 
-async def save_profile(page: ft.Page, name: str, email: str, pic_path: str = ""):
+async def save_profile(page: ft.Page = None, name: str = "", email: str = "", pic_path: str = ""):
     """Persist profile to client storage."""
-    await page.shared_preferences.set(f"{_KEY_PREFIX}name", name)
-    await page.shared_preferences.set(f"{_KEY_PREFIX}email", email)
-    await page.shared_preferences.set(f"{_KEY_PREFIX}pic_path", pic_path)
+    from prefs import get_prefs
+    prefs = get_prefs()
+    await prefs.set(f"{_KEY_PREFIX}name", name)
+    await prefs.set(f"{_KEY_PREFIX}email", email)
+    await prefs.set(f"{_KEY_PREFIX}pic_path", pic_path)
 
 
 def _make_avatar(pic_path: str = "") -> ft.CircleAvatar:
@@ -67,7 +71,7 @@ def create_profile_settings(page: ft.Page) -> ft.Container:
         page.update()
 
     async def _populate():
-        profile = await load_profile(page)
+        profile = await load_profile()
         name_field.value = profile["name"]
         email_field.value = profile["email"]
         if profile["pic_path"]:

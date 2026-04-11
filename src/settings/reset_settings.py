@@ -22,7 +22,9 @@ def create_reset_settings(page: ft.Page, on_reset: callable) -> ft.Container:
             return
 
         # Clear all client storage
-        await page.shared_preferences.clear()
+        from prefs import get_prefs, reset_prefs
+        await get_prefs().clear()
+        reset_prefs()
 
         # Delete all local data (ChromaDB + chat history)
         if _MAICAMPUS_DIR.exists():

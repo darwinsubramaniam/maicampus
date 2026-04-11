@@ -5,13 +5,15 @@ from ai_providers import DEFAULT_MODELS, Provider, ProviderConfig
 _KEY_PREFIX = "maicampus.ai."
 
 
-async def load_config(page: ft.Page) -> ProviderConfig | None:
+async def load_config(page: ft.Page = None) -> ProviderConfig | None:
     """Load saved AI config from client storage."""
-    provider_name = await page.shared_preferences.get(f"{_KEY_PREFIX}provider")
-    api_key = await page.shared_preferences.get(f"{_KEY_PREFIX}api_key")
+    from prefs import get_prefs
+    prefs = get_prefs()
+    provider_name = await prefs.get(f"{_KEY_PREFIX}provider")
+    api_key = await prefs.get(f"{_KEY_PREFIX}api_key")
     if not provider_name or not api_key:
         return None
-    model = await page.shared_preferences.get(f"{_KEY_PREFIX}model")
+    model = await prefs.get(f"{_KEY_PREFIX}model")
     return ProviderConfig(
         provider=Provider[provider_name],
         api_key=api_key,
@@ -19,14 +21,16 @@ async def load_config(page: ft.Page) -> ProviderConfig | None:
     )
 
 
-async def _save_config(page: ft.Page, config: ProviderConfig):
+async def _save_config(page: ft.Page = None, config: ProviderConfig = None):
     """Persist AI config to client storage."""
-    await page.shared_preferences.set(f"{_KEY_PREFIX}provider", config.provider.name)
-    await page.shared_preferences.set(f"{_KEY_PREFIX}api_key", config.api_key)
+    from prefs import get_prefs
+    prefs = get_prefs()
+    await prefs.set(f"{_KEY_PREFIX}provider", config.provider.name)
+    await prefs.set(f"{_KEY_PREFIX}api_key", config.api_key)
     if config.model:
-        await page.shared_preferences.set(f"{_KEY_PREFIX}model", config.model)
+        await prefs.set(f"{_KEY_PREFIX}model", config.model)
     else:
-        await page.shared_preferences.remove(f"{_KEY_PREFIX}model")
+        await prefs.remove(f"{_KEY_PREFIX}model")
 
 
 def create_ai_settings(page: ft.Page, on_save: callable) -> ft.Container:
@@ -78,8 +82,7 @@ def create_ai_settings(page: ft.Page, on_save: callable) -> ft.Container:
         page.update()
 
     async def _populate_from_storage():
-        """Fill fields from saved config on load."""
-        config = await load_config(page)
+        config = await load_config()
         if config:
             provider_dropdown.value = config.provider.name
             api_key_field.value = config.api_key

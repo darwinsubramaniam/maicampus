@@ -1,23 +1,26 @@
+import asyncio
+import json
 import threading
 
 import flet as ft
 
-from ai_providers import ProviderConfig, stream_response
+from ai_providers import Provider, ProviderConfig, StreamItem, TextChunk, ToolCall, stream_response
+from notifications import NotificationCenter
 from chat.input_bar import create_input_bar
 from chat.message import ChatMessage
 from chat.session_store import SessionStore
 from chat.sidebar import create_sidebar
 from memory import MemoryManager
 from settings.profile_settings import load_profile
+from tools import execute as execute_tool, get_all as get_all_tools
+from tools.converters import get_tools_for_provider
 
 
-def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: callable) -> ft.Row:
+def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: callable, get_calendar_context: callable = None, notifications: NotificationCenter = None) -> ft.Row:
     store = SessionStore()
     chat_list = ft.ListView(expand=True, spacing=10, auto_scroll=True, padding=20)
 
-    # User profile state (loaded async)
     profile: dict = {"name": "You", "pic_path": ""}
-
     conversation: list[dict] = []
     state: dict = {"session": None}
 
@@ -64,6 +67,78 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
             sidebar_refresh()
             page.update()
 
+    def _build_system_prompt(user_text: str) -> str:
+        today_str = __import__("datetime").date.today().isoformat()
+        base_prompt = (
+            "You are MAI, a friendly and proactive student companion for campus life. "
+            "You help students manage their classes, assignments, project deadlines, "
+            "facility bookings, social club activities, and general well-being on campus. "
+            "Be warm, encouraging, and practical. "
+            "When relevant, proactively remind students about deadlines or suggest campus resources.\n\n"
+            f"Today's date is {today_str}.\n\n"
+            "You have access to tools for managing the student's calendar. "
+            "Before creating a calendar event, ask the student to confirm all the details. "
+            "When the student confirms, use the create_calendar_event tool. "
+            "Use get_upcoming_events or get_events_for_date to check the schedule when asked."
+        )
+
+        mgr: MemoryManager | None = get_memory_manager()
+        if mgr:
+            try:
+                memories = mgr.search_relevant(user_text)
+                if memories:
+                    memory_block = "\n".join(f"- {m}" for m in memories)
+                    base_prompt += (
+                        "\n\nHere are relevant things you remember about this student:\n"
+                        f"{memory_block}\n\n"
+                        "Use this context to personalize your response."
+                    )
+            except Exception:
+                pass
+
+        if get_calendar_context:
+            try:
+                cal_block = get_calendar_context()
+                if cal_block:
+                    base_prompt += f"\n\n{cal_block}"
+            except Exception:
+                pass
+
+        return base_prompt
+
+    def _append_tool_turn(provider: Provider, messages: list[dict], tool_calls: list[ToolCall], results: list[dict]):
+        """Append tool call + results to messages in provider-specific format."""
+        if provider == Provider.OPENAI:
+            # OpenAI: assistant message with tool_calls, then tool messages
+            openai_tool_calls = []
+            for tc in tool_calls:
+                openai_tool_calls.append({
+                    "id": tc.call_id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                })
+            messages.append({"role": "assistant", "tool_calls": openai_tool_calls, "content": None})
+            for tc, result in zip(tool_calls, results):
+                messages.append({"role": "tool", "tool_call_id": tc.call_id, "content": json.dumps(result)})
+
+        elif provider == Provider.CLAUDE:
+            # Claude: assistant content with tool_use blocks, then user with tool_result
+            content_blocks = []
+            for tc in tool_calls:
+                content_blocks.append({"type": "tool_use", "id": tc.call_id, "name": tc.name, "input": tc.arguments})
+            messages.append({"role": "assistant", "content": content_blocks})
+            tool_results = []
+            for tc, result in zip(tool_calls, results):
+                tool_results.append({"type": "tool_result", "tool_use_id": tc.call_id, "content": json.dumps(result)})
+            messages.append({"role": "user", "content": tool_results})
+
+        elif provider == Provider.GEMINI:
+            # Gemini: model turn with function_call parts, user turn with function_response
+            fc_parts = [{"function_call": {"name": tc.name, "args": tc.arguments}} for tc in tool_calls]
+            messages.append({"role": "assistant", "content": fc_parts})
+            fr_parts = [{"function_response": {"name": tc.name, "response": result}} for tc, result in zip(tool_calls, results)]
+            messages.append({"role": "user", "content": fr_parts})
+
     def send_message(e):
         text = message_input.value.strip()
         if not text:
@@ -94,62 +169,78 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
         page.update()
 
         async def do_stream_async():
+            print(f"[MAI] do_stream_async ENTERED", flush=True)
             collected = []
             streaming_started = False
             try:
-                mgr: MemoryManager | None = get_memory_manager()
-                messages_to_send = list(conversation)
+                system_prompt = _build_system_prompt(text)
+                print(f"[MAI] system prompt built", flush=True)
+                messages_to_send = [{"role": "system", "content": system_prompt}] + list(conversation)
+                provider_tools = get_tools_for_provider(config.provider)
+                import sys
+                print(f"[MAI] Provider: {config.provider}, Tools count: {len(provider_tools) if provider_tools else 0}", flush=True)
+                if provider_tools:
+                    print(f"[MAI] Tools: {[t.get('name', t.get('function', {}).get('name', '?')) if isinstance(t, dict) else str(type(t)) for t in provider_tools]}", flush=True)
 
-                base_prompt = (
-                    "You are MAI, a friendly and proactive student companion for campus life. "
-                    "You help students manage their classes, assignments, project deadlines, "
-                    "facility bookings, social club activities, and general well-being on campus. "
-                    "Be warm, encouraging, and practical. "
-                    "When relevant, proactively remind students about deadlines or suggest campus resources."
-                )
+                max_tool_rounds = 5  # prevent infinite loops
+                tool_round = 0
 
-                if mgr:
-                    try:
-                        memories = mgr.search_relevant(text)
-                        if memories:
-                            memory_block = "\n".join(f"- {m}" for m in memories)
-                            base_prompt += (
-                                "\n\nHere are relevant things you remember about this student:\n"
-                                f"{memory_block}\n\n"
-                                "Use this context to personalize your response."
+                while tool_round < max_tool_rounds:
+                    tool_calls_this_turn: list[ToolCall] = []
+                    loop = asyncio.get_event_loop()
+                    queue: asyncio.Queue[StreamItem | Exception | None] = asyncio.Queue()
+
+                    def _produce(msgs=messages_to_send, tls=provider_tools):
+                        try:
+                            for item in stream_response(config, msgs, tools=tls):
+                                loop.call_soon_threadsafe(queue.put_nowait, item)
+                            loop.call_soon_threadsafe(queue.put_nowait, None)
+                        except Exception as ex:
+                            loop.call_soon_threadsafe(queue.put_nowait, ex)
+
+                    threading.Thread(target=_produce, daemon=True).start()
+
+                    while True:
+                        item = await queue.get()
+                        if item is None:
+                            break
+                        if isinstance(item, Exception):
+                            raise item
+                        if isinstance(item, TextChunk):
+                            if not streaming_started:
+                                ai_msg.start_streaming()
+                                streaming_started = True
+                            collected.append(item.text)
+                            ai_msg.body_text.value = "".join(collected)
+                            page.update()
+                        elif isinstance(item, ToolCall):
+                            tool_calls_this_turn.append(item)
+
+                    if not tool_calls_this_turn:
+                        break  # No tools called, done
+
+                    # Execute tools and show toast for calendar events
+                    results = []
+                    for tc in tool_calls_this_turn:
+                        print(f"[MAI] Tool call: {tc.name}({tc.arguments})", flush=True)
+                        result = execute_tool(tc.name, tc.arguments)
+                        print(f"[MAI] Tool result: {result}", flush=True)
+                        results.append(result)
+                        if tc.name == "create_calendar_event" and result.get("success") and notifications:
+                            notifications.add(
+                                f"Added to calendar: {result.get('title', 'Event')}",
+                                icon=ft.Icons.CALENDAR_MONTH,
+                                color=ft.Colors.TEAL,
                             )
-                    except Exception:
-                        pass
 
-                messages_to_send = [{"role": "system", "content": base_prompt}] + messages_to_send
+                    # Append tool turn to messages
+                    _append_tool_turn(config.provider, messages_to_send, tool_calls_this_turn, results)
+                    tool_round += 1
 
-                # Run blocking stream in a thread, yield chunks back
-                import asyncio
-                loop = asyncio.get_event_loop()
-                queue = asyncio.Queue()
-
-                def _produce():
-                    try:
-                        for chunk in stream_response(config, messages_to_send):
-                            loop.call_soon_threadsafe(queue.put_nowait, chunk)
-                        loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
-                    except Exception as ex:
-                        loop.call_soon_threadsafe(queue.put_nowait, ex)
-
-                threading.Thread(target=_produce, daemon=True).start()
-
-                while True:
-                    item = await queue.get()
-                    if item is None:
-                        break
-                    if isinstance(item, Exception):
-                        raise item
+                    # Show brief status
                     if not streaming_started:
                         ai_msg.start_streaming()
                         streaming_started = True
-                    collected.append(item)
-                    ai_msg.body_text.value = "".join(collected)
-                    page.update()
 
                 assistant_response = "".join(collected)
                 conversation.append({
@@ -161,16 +252,19 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
                 _save_to_db()
                 page.update()
 
+                mgr = get_memory_manager()
                 if mgr:
                     def _store():
                         try:
                             mgr.add_turn(text, assistant_response)
                         except Exception:
                             pass
-
                     threading.Thread(target=_store, daemon=True).start()
 
             except Exception as ex:
+                import traceback
+                traceback.print_exc()
+                print(f"[MAI] ERROR: {ex}", flush=True)
                 ai_msg.set_error(str(ex))
                 page.update()
 
@@ -186,7 +280,6 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
         active_session_id=_active_session_id,
     )
 
-    # Sidebar hidden by default
     sidebar_container.visible = False
     sidebar_divider = ft.VerticalDivider(width=1, visible=False)
 
@@ -204,22 +297,27 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
         icon_color=ft.Colors.TEAL_700,
     )
 
+    header_controls = [
+        toggle_btn,
+        ft.Icon(ft.Icons.SCHOOL, color=ft.Colors.TEAL, size=20),
+        ft.Text("MAI Campus", size=16, weight=ft.FontWeight.W_600, color=ft.Colors.TEAL_700),
+        ft.Container(expand=True),
+    ]
+    if notifications:
+        header_controls.append(notifications.bell_button)
+
+    chat_header_row = ft.Row(
+        controls=header_controls,
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        spacing=8,
+    )
+
     chat_header = ft.Container(
-        content=ft.Row(
-            controls=[
-                toggle_btn,
-                ft.Icon(ft.Icons.SCHOOL, color=ft.Colors.TEAL, size=20),
-                ft.Text("MAI Campus", size=16, weight=ft.FontWeight.W_600, color=ft.Colors.TEAL_700),
-                ft.Container(expand=True),
-            ],
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=8,
-        ),
-        padding=ft.Padding(left=4, right=12, top=6, bottom=6),
+        content=chat_header_row,
+        padding=ft.Padding(left=4, right=8, top=6, bottom=6),
         border=ft.Border(bottom=ft.BorderSide(1, ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE))),
     )
 
-    # Floating scroll-to-bottom button
     scroll_down_btn = ft.IconButton(
         icon=ft.Icons.KEYBOARD_ARROW_DOWN,
         icon_size=22,
@@ -227,11 +325,7 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
         icon_color=ft.Colors.WHITE,
         visible=False,
         on_click=lambda e: page.run_task(_scroll_to_bottom),
-        style=ft.ButtonStyle(
-            shape=ft.CircleBorder(),
-            shadow_color=ft.Colors.BLACK,
-            elevation=4,
-        ),
+        style=ft.ButtonStyle(shape=ft.CircleBorder(), shadow_color=ft.Colors.BLACK, elevation=4),
     )
 
     async def _scroll_to_bottom():
@@ -250,24 +344,34 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
     chat_area = ft.Stack(
         controls=[
             chat_list,
-            ft.Container(
-                content=scroll_down_btn,
-                alignment=ft.Alignment.BOTTOM_CENTER,
-                bottom=10,
-                right=0,
-                left=0,
-            ),
+            ft.Container(content=scroll_down_btn, alignment=ft.Alignment.BOTTOM_CENTER, bottom=10, right=0, left=0),
         ],
         expand=True,
     )
 
-    chat_panel = ft.Column(expand=True, controls=[chat_header, chat_area, input_bar])
+    chat_column = ft.Column(expand=True, controls=[chat_header, chat_area, input_bar])
 
-    # Load user profile, then restore most recent session
+    # Wrap chat column + notification panel in a Stack so notifications float on top
+    chat_stack_controls = [chat_column]
+    if notifications:
+        chat_stack_controls.append(
+            ft.Container(
+                content=notifications.panel,
+                right=8,
+                top=48,
+            ),
+        )
+
+    chat_panel = ft.Stack(controls=chat_stack_controls, expand=True)
+
+    # Load profile and restore session
     async def _init_chat():
-        p = await load_profile(page)
-        profile["name"] = p.get("name") or "You"
-        profile["pic_path"] = p.get("pic_path") or ""
+        try:
+            p = await load_profile()
+            profile["name"] = p.get("name") or "You"
+            profile["pic_path"] = p.get("pic_path") or ""
+        except Exception:
+            pass
 
         sessions = store.get_all_sessions()
         if sessions:
