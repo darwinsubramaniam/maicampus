@@ -6,8 +6,28 @@ import threading
 import urllib.request
 from typing import Callable
 
-APP_VERSION = "0.1.0"
 GITHUB_REPO = "darwinsubramaniam/maicampus"
+
+# Read version from pyproject.toml (single source of truth)
+def _get_app_version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("maicampus")
+    except Exception:
+        pass
+    # Fallback: parse pyproject.toml directly
+    try:
+        from pathlib import Path
+        import re
+        pyproject = Path(__file__).parent.parent / "pyproject.toml"
+        match = re.search(r'version\s*=\s*"(.+?)"', pyproject.read_text())
+        if match:
+            return match.group(1)
+    except Exception:
+        pass
+    return "0.0.0"
+
+APP_VERSION = _get_app_version()
 RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 
