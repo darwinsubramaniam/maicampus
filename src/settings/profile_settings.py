@@ -1,38 +1,39 @@
+import json
+
 import flet as ft
+
+from constants import PROFILE_CACHE_PATH, make_avatar
 
 _KEY_PREFIX = "maicampus.profile."
 
 
-async def load_profile(page: ft.Page) -> dict:
+async def load_profile(page: ft.Page = None) -> dict:
     """Load saved profile from client storage."""
-    name = await page.shared_preferences.get(f"{_KEY_PREFIX}name") or ""
-    email = await page.shared_preferences.get(f"{_KEY_PREFIX}email") or ""
-    pic_path = await page.shared_preferences.get(f"{_KEY_PREFIX}pic_path") or ""
+    from prefs import get_prefs
+    prefs = get_prefs()
+    name = await prefs.get(f"{_KEY_PREFIX}name") or ""
+    email = await prefs.get(f"{_KEY_PREFIX}email") or ""
+    pic_path = await prefs.get(f"{_KEY_PREFIX}pic_path") or ""
     return {"name": name, "email": email, "pic_path": pic_path}
 
 
-async def save_profile(page: ft.Page, name: str, email: str, pic_path: str = ""):
+async def save_profile(page: ft.Page = None, name: str = "", email: str = "", pic_path: str = ""):
     """Persist profile to client storage."""
-    await page.shared_preferences.set(f"{_KEY_PREFIX}name", name)
-    await page.shared_preferences.set(f"{_KEY_PREFIX}email", email)
-    await page.shared_preferences.set(f"{_KEY_PREFIX}pic_path", pic_path)
-
-
-def _make_avatar(pic_path: str = "") -> ft.CircleAvatar:
-    if pic_path:
-        return ft.CircleAvatar(foreground_image_src=pic_path, radius=40)
-    return ft.CircleAvatar(
-        content=ft.Icon(ft.Icons.PERSON, size=32),
-        radius=40,
-        bgcolor=ft.Colors.PRIMARY_CONTAINER,
-    )
+    from prefs import get_prefs
+    prefs = get_prefs()
+    await prefs.set(f"{_KEY_PREFIX}name", name)
+    await prefs.set(f"{_KEY_PREFIX}email", email)
+    await prefs.set(f"{_KEY_PREFIX}pic_path", pic_path)
+    # File cache for sync loading
+    PROFILE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PROFILE_CACHE_PATH.write_text(json.dumps({"name": name, "email": email, "pic_path": pic_path}))
 
 
 def create_profile_settings(page: ft.Page) -> ft.Container:
     name_field = ft.TextField(label="Name", width=400)
     email_field = ft.TextField(label="Email", width=400)
 
-    pic_container = ft.Container(content=_make_avatar())
+    pic_container = ft.Container(content=make_avatar())
     pic_path_state = {"path": ""}
 
     status_text = ft.Text("", color=ft.Colors.GREEN)
@@ -46,7 +47,7 @@ def create_profile_settings(page: ft.Page) -> ft.Container:
         )
         if files:
             pic_path_state["path"] = files[0].path
-            pic_container.content = _make_avatar(files[0].path)
+            pic_container.content = make_avatar(files[0].path)
             page.update()
 
     async def do_save(e):
@@ -67,12 +68,12 @@ def create_profile_settings(page: ft.Page) -> ft.Container:
         page.update()
 
     async def _populate():
-        profile = await load_profile(page)
+        profile = await load_profile()
         name_field.value = profile["name"]
         email_field.value = profile["email"]
         if profile["pic_path"]:
             pic_path_state["path"] = profile["pic_path"]
-            pic_container.content = _make_avatar(profile["pic_path"])
+            pic_container.content = make_avatar(profile["pic_path"])
         page.update()
 
     page.run_task(_populate)

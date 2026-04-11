@@ -1,7 +1,7 @@
 import flet as ft
 
 from ai_providers import DEFAULT_MODELS, Provider, ProviderConfig
-from settings.ai_settings import _save_config
+from settings.ai_settings import save_config
 
 
 def step(on_config_ready: callable) -> dict:
@@ -60,7 +60,7 @@ def step(on_config_ready: callable) -> dict:
             api_key=api_key_field.value.strip(),
             model=model_field.value.strip() or None,
         )
-        await _save_config(page, config)
+        await save_config(page, config)
         on_config_ready(config)
         page.update()
         return True

@@ -1,23 +1,14 @@
 import flet as ft
 
+from constants import make_avatar
 from settings.profile_settings import save_profile
-
-
-def _make_avatar(pic_path: str = "") -> ft.CircleAvatar:
-    if pic_path:
-        return ft.CircleAvatar(foreground_image_src=pic_path, radius=40)
-    return ft.CircleAvatar(
-        content=ft.Icon(ft.Icons.PERSON, size=32),
-        radius=40,
-        bgcolor=ft.Colors.PRIMARY_CONTAINER,
-    )
 
 
 def step() -> dict:
     name_field = ft.TextField(label="Name *", width=400)
     email_field = ft.TextField(label="Email *", width=400)
 
-    pic_container = ft.Container(content=_make_avatar())
+    pic_container = ft.Container(content=make_avatar())
     pic_path_state = {"path": ""}
 
     error_text = ft.Text("", color=ft.Colors.RED, visible=False)
@@ -31,7 +22,7 @@ def step() -> dict:
         )
         if files:
             pic_path_state["path"] = files[0].path
-            pic_container.content = _make_avatar(files[0].path)
+            pic_container.content = make_avatar(files[0].path)
             e.page.update()
 
     content = ft.Column(

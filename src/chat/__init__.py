@@ -1,38 +1,93 @@
-import threading
+"""Main chat view — orchestrates ChatEngine with session management, sidebar, and notifications."""
+
+import json
 
 import flet as ft
 
-from ai_providers import ProviderConfig, stream_response
-from chat.input_bar import create_input_bar
+from chat.chat_core import ChatEngine
 from chat.message import ChatMessage
 from chat.session_store import SessionStore
 from chat.sidebar import create_sidebar
-from memory import MemoryManager
+from constants import PROFILE_CACHE_PATH
+from notifications import NotificationCenter
 from settings.profile_settings import load_profile
 
 
-def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: callable) -> ft.Row:
+def _build_checkin_banner(task_title: str, due_date: str = None) -> ft.Container:
+    due_text = f" — Due: {due_date}" if due_date else ""
+    return ft.Container(
+        content=ft.Column(
+            controls=[
+                ft.Row(
+                    controls=[
+                        ft.Icon(ft.Icons.FACT_CHECK, size=18, color=ft.Colors.ORANGE),
+                        ft.Text("Progress Check-in", size=13, weight=ft.FontWeight.BOLD, color=ft.Colors.ORANGE),
+                    ],
+                    spacing=6,
+                ),
+                ft.Text(f"Task: {task_title}{due_text}", size=12, color=ft.Colors.ON_SURFACE, weight=ft.FontWeight.W_500),
+                ft.Text(
+                    "This conversation was initiated by MAI to check on your progress. "
+                    "Please keep the discussion focused on this task for best tracking.",
+                    size=11, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
+                ),
+            ],
+            spacing=4,
+            tight=True,
+        ),
+        padding=ft.Padding(left=14, right=14, top=10, bottom=10),
+        border_radius=10,
+        bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ORANGE),
+        border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ft.Colors.ORANGE)),
+    )
+
+
+def create_chat_view(
+    page: ft.Page,
+    get_config: callable,
+    get_memory_manager: callable,
+    get_calendar_context: callable = None,
+    notifications: NotificationCenter = None,
+) -> ft.Row:
     store = SessionStore()
-    chat_list = ft.ListView(expand=True, spacing=10, auto_scroll=True, padding=20)
-
-    # User profile state (loaded async)
     profile: dict = {"name": "You", "pic_path": ""}
-
-    conversation: list[dict] = []
     state: dict = {"session": None}
 
+    # --- Tool execution notification ---
+    def _on_tool_executed(name, result):
+        if name == "create_calendar_event" and result.get("success") and notifications:
+            notifications.add(
+                f"Added to calendar: {result.get('title', 'Event')}",
+                icon=ft.Icons.CALENDAR_MONTH,
+                color=ft.Colors.TEAL,
+            )
+
+    # --- ChatEngine (handles all streaming, tools, system prompt) ---
+    engine = ChatEngine(
+        page=page,
+        get_config=get_config,
+        get_memory_manager=get_memory_manager,
+        get_calendar_context=get_calendar_context,
+        on_tool_executed=_on_tool_executed,
+        on_response_complete=lambda: _on_response_complete(),
+    )
+
+    def _on_response_complete():
+        _save_to_db()
+
+    # --- Session management ---
     def _active_session_id() -> str | None:
         s = state["session"]
         return s["id"] if s else None
 
     def _save_to_db():
         if state["session"]:
-            store.save_messages(state["session"]["id"], list(conversation))
+            store.save_messages(state["session"]["id"], list(engine.conversation))
 
     def new_chat():
         state["session"] = store.create_session()
-        conversation.clear()
-        chat_list.controls.clear()
+        engine.clear()
+        engine.checkin_context = None
         sidebar_refresh()
         page.update()
 
@@ -41,17 +96,25 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
         if not fresh:
             return
         state["session"] = fresh
-        conversation.clear()
-        conversation.extend(fresh.get("messages", []))
 
-        chat_list.controls.clear()
-        for msg in conversation:
-            if msg["role"] == "user":
-                chat_list.controls.append(
-                    ChatMessage(profile["name"], msg["content"], is_user=True, user_pic=profile["pic_path"])
-                )
-            elif msg["role"] == "assistant":
-                chat_list.controls.append(ChatMessage("MAI", msg["content"]))
+        # Set check-in context on engine if this is a check-in session
+        if fresh.get("session_type") == "checkin":
+            engine.checkin_context = fresh.get("checkin_context")
+        else:
+            engine.checkin_context = None
+
+        # Update engine profile
+        engine.user_name = profile["name"]
+        engine.user_pic = profile["pic_path"]
+
+        engine.clear()
+        # Add check-in banner if applicable
+        if fresh.get("session_type") == "checkin":
+            ctx = fresh.get("checkin_context") or {}
+            engine.chat_list.controls.append(
+                _build_checkin_banner(ctx.get("task_title", "Task"), ctx.get("due_date"))
+            )
+        engine.load_messages(fresh.get("messages", []))
 
         sidebar_refresh()
         page.update()
@@ -64,120 +127,36 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
             sidebar_refresh()
             page.update()
 
+    # --- Send message (wraps ChatEngine with session logic) ---
     def send_message(e):
-        text = message_input.value.strip()
-        if not text:
+        text = engine.message_input.value
+        if not text or not text.strip():
             return
 
-        config: ProviderConfig | None = get_config()
+        config = get_config()
         if config is None:
-            page.snack_bar = ft.SnackBar(ft.Text("Configure your AI provider in Settings first."), open=True)
-            page.update()
             return
 
         if state["session"] is None:
             state["session"] = store.create_session()
 
-        conversation.append({"role": "user", "content": text})
-        chat_list.controls.append(
-            ChatMessage(profile["name"], text, is_user=True, user_pic=profile["pic_path"])
-        )
-        message_input.value = ""
-
-        if len(conversation) == 1:
-            title = text[:40] + ("..." if len(text) > 40 else "")
+        # Auto-title from first user message
+        if not engine.conversation:
+            title = text.strip()[:40] + ("..." if len(text.strip()) > 40 else "")
             store.update_title(state["session"]["id"], title)
             state["session"]["title"] = title
 
-        ai_msg = ChatMessage("MAI", "", is_loading=True)
-        chat_list.controls.append(ai_msg)
-        page.update()
+        # Update engine profile before sending
+        engine.user_name = profile["name"]
+        engine.user_pic = profile["pic_path"]
 
-        async def do_stream_async():
-            collected = []
-            streaming_started = False
-            try:
-                mgr: MemoryManager | None = get_memory_manager()
-                messages_to_send = list(conversation)
+        engine._send_message(e)
 
-                base_prompt = (
-                    "You are MAI, a friendly and proactive student companion for campus life. "
-                    "You help students manage their classes, assignments, project deadlines, "
-                    "facility bookings, social club activities, and general well-being on campus. "
-                    "Be warm, encouraging, and practical. "
-                    "When relevant, proactively remind students about deadlines or suggest campus resources."
-                )
+    # Replace engine's input bar with our session-aware version
+    from chat.input_bar import create_input_bar
+    engine.input_bar, engine.message_input = create_input_bar(send_message)
 
-                if mgr:
-                    try:
-                        memories = mgr.search_relevant(text)
-                        if memories:
-                            memory_block = "\n".join(f"- {m}" for m in memories)
-                            base_prompt += (
-                                "\n\nHere are relevant things you remember about this student:\n"
-                                f"{memory_block}\n\n"
-                                "Use this context to personalize your response."
-                            )
-                    except Exception:
-                        pass
-
-                messages_to_send = [{"role": "system", "content": base_prompt}] + messages_to_send
-
-                # Run blocking stream in a thread, yield chunks back
-                import asyncio
-                loop = asyncio.get_event_loop()
-                queue = asyncio.Queue()
-
-                def _produce():
-                    try:
-                        for chunk in stream_response(config, messages_to_send):
-                            loop.call_soon_threadsafe(queue.put_nowait, chunk)
-                        loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
-                    except Exception as ex:
-                        loop.call_soon_threadsafe(queue.put_nowait, ex)
-
-                threading.Thread(target=_produce, daemon=True).start()
-
-                while True:
-                    item = await queue.get()
-                    if item is None:
-                        break
-                    if isinstance(item, Exception):
-                        raise item
-                    if not streaming_started:
-                        ai_msg.start_streaming()
-                        streaming_started = True
-                    collected.append(item)
-                    ai_msg.body_text.value = "".join(collected)
-                    page.update()
-
-                assistant_response = "".join(collected)
-                conversation.append({
-                    "role": "assistant",
-                    "content": assistant_response,
-                    "provider": config.provider.value,
-                })
-
-                _save_to_db()
-                page.update()
-
-                if mgr:
-                    def _store():
-                        try:
-                            mgr.add_turn(text, assistant_response)
-                        except Exception:
-                            pass
-
-                    threading.Thread(target=_store, daemon=True).start()
-
-            except Exception as ex:
-                ai_msg.set_error(str(ex))
-                page.update()
-
-        page.run_task(do_stream_async)
-
-    input_bar, message_input = create_input_bar(send_message)
-
+    # --- Sidebar ---
     sidebar_container, sidebar_refresh = create_sidebar(
         on_new_chat=new_chat,
         on_select_session=load_session,
@@ -185,8 +164,6 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
         get_sessions=store.get_all_sessions,
         active_session_id=_active_session_id,
     )
-
-    # Sidebar hidden by default
     sidebar_container.visible = False
     sidebar_divider = ft.VerticalDivider(width=1, visible=False)
 
@@ -197,45 +174,37 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
             sidebar_refresh()
         page.update()
 
+    # --- Header ---
     toggle_btn = ft.IconButton(
-        icon=ft.Icons.MENU,
-        tooltip="Chat history",
-        on_click=toggle_sidebar,
-        icon_color=ft.Colors.TEAL_700,
+        icon=ft.Icons.MENU, tooltip="Chat history",
+        on_click=toggle_sidebar, icon_color=ft.Colors.TEAL_700,
     )
 
+    header_controls = [
+        toggle_btn,
+        ft.Icon(ft.Icons.SCHOOL, color=ft.Colors.TEAL, size=20),
+        ft.Text("MAI Campus", size=16, weight=ft.FontWeight.W_600, color=ft.Colors.TEAL_700),
+        ft.Container(expand=True),
+    ]
+    if notifications:
+        header_controls.append(notifications.bell_button)
+
     chat_header = ft.Container(
-        content=ft.Row(
-            controls=[
-                toggle_btn,
-                ft.Icon(ft.Icons.SCHOOL, color=ft.Colors.TEAL, size=20),
-                ft.Text("MAI Campus", size=16, weight=ft.FontWeight.W_600, color=ft.Colors.TEAL_700),
-                ft.Container(expand=True),
-            ],
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=8,
-        ),
-        padding=ft.Padding(left=4, right=12, top=6, bottom=6),
+        content=ft.Row(controls=header_controls, vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+        padding=ft.Padding(left=4, right=8, top=6, bottom=6),
         border=ft.Border(bottom=ft.BorderSide(1, ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE))),
     )
 
-    # Floating scroll-to-bottom button
+    # --- Scroll-to-bottom button ---
     scroll_down_btn = ft.IconButton(
-        icon=ft.Icons.KEYBOARD_ARROW_DOWN,
-        icon_size=22,
-        bgcolor=ft.Colors.TEAL,
-        icon_color=ft.Colors.WHITE,
-        visible=False,
+        icon=ft.Icons.KEYBOARD_ARROW_DOWN, icon_size=22,
+        bgcolor=ft.Colors.TEAL, icon_color=ft.Colors.WHITE, visible=False,
         on_click=lambda e: page.run_task(_scroll_to_bottom),
-        style=ft.ButtonStyle(
-            shape=ft.CircleBorder(),
-            shadow_color=ft.Colors.BLACK,
-            elevation=4,
-        ),
+        style=ft.ButtonStyle(shape=ft.CircleBorder(), shadow_color=ft.Colors.BLACK, elevation=4),
     )
 
     async def _scroll_to_bottom():
-        await chat_list.scroll_to(offset=-1)
+        await engine.chat_list.scroll_to(offset=-1)
         scroll_down_btn.visible = False
         page.update()
 
@@ -245,38 +214,90 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
             scroll_down_btn.visible = not at_bottom
             page.update()
 
-    chat_list.on_scroll = on_chat_scroll
+    engine.chat_list.on_scroll = on_chat_scroll
 
     chat_area = ft.Stack(
         controls=[
-            chat_list,
-            ft.Container(
-                content=scroll_down_btn,
-                alignment=ft.Alignment.BOTTOM_CENTER,
-                bottom=10,
-                right=0,
-                left=0,
-            ),
+            engine.chat_list,
+            ft.Container(content=scroll_down_btn, alignment=ft.Alignment.BOTTOM_CENTER, bottom=10, right=0, left=0),
         ],
         expand=True,
     )
 
-    chat_panel = ft.Column(expand=True, controls=[chat_header, chat_area, input_bar])
+    chat_column = ft.Column(expand=True, controls=[chat_header, chat_area, engine.input_bar])
 
-    # Load user profile, then restore most recent session
+    # Notification panel floating on top
+    chat_stack_controls = [chat_column]
+    if notifications:
+        chat_stack_controls.append(
+            ft.Container(content=notifications.panel, right=8, top=48),
+        )
+    chat_panel = ft.Stack(controls=chat_stack_controls, expand=True)
+
+    # --- Profile loading ---
+    if PROFILE_CACHE_PATH.exists():
+        try:
+            cached = json.loads(PROFILE_CACHE_PATH.read_text())
+            profile["name"] = cached.get("name") or "You"
+            profile["pic_path"] = cached.get("pic_path") or ""
+        except Exception:
+            pass
+
     async def _init_chat():
-        p = await load_profile(page)
-        profile["name"] = p.get("name") or "You"
-        profile["pic_path"] = p.get("pic_path") or ""
+        try:
+            p = await load_profile()
+            profile["name"] = p.get("name") or "You"
+            profile["pic_path"] = p.get("pic_path") or ""
+            PROFILE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            PROFILE_CACHE_PATH.write_text(json.dumps({"name": profile["name"], "pic_path": profile["pic_path"]}))
+        except Exception:
+            pass
 
         sessions = store.get_all_sessions()
         if sessions:
             load_session(sessions[0])
+        page.update()
 
     page.run_task(_init_chat)
 
-    return ft.Row(
+    # Sync session restore with cached profile
+    if profile["name"] != "You" or profile["pic_path"]:
+        sessions = store.get_all_sessions()
+        if sessions:
+            load_session(sessions[0])
+
+    # --- Build view ---
+    view = ft.Row(
         expand=True,
         controls=[sidebar_container, sidebar_divider, chat_panel],
         spacing=0,
     )
+
+    view.send_prompt = lambda prompt: _auto_send(prompt)
+    view.start_checkin = lambda title, mai_message, event_id=None, due_date=None: _start_checkin(title, mai_message, event_id, due_date)
+
+    def _auto_send(prompt: str):
+        engine.message_input.value = prompt
+        send_message(None)
+
+    def _start_checkin(title: str, mai_message: str, event_id: str = None, due_date: str = None):
+        session = store.create_session(title=f"[Check-in] {title}")
+        state["session"] = session
+
+        checkin_ctx = {"task_title": title, "event_id": event_id, "due_date": due_date}
+        store.update_event_meta(session["id"], {"session_type": "checkin", "checkin_context": checkin_ctx})
+        state["session"]["session_type"] = "checkin"
+        state["session"]["checkin_context"] = checkin_ctx
+
+        engine.checkin_context = checkin_ctx
+        engine.clear()
+        engine.chat_list.controls.append(_build_checkin_banner(title, due_date))
+
+        engine.conversation.append({"role": "assistant", "content": mai_message, "provider": "MAI"})
+        engine.chat_list.controls.append(ChatMessage("MAI", mai_message))
+
+        _save_to_db()
+        sidebar_refresh()
+        page.update()
+
+    return view

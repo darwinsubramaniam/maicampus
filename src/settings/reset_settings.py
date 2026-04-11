@@ -1,9 +1,8 @@
 import shutil
-from pathlib import Path
 
 import flet as ft
 
-_MAICAMPUS_DIR = Path.home() / ".maicampus"
+from constants import APP_DIR
 
 
 def create_reset_settings(page: ft.Page, on_reset: callable) -> ft.Container:
@@ -22,11 +21,13 @@ def create_reset_settings(page: ft.Page, on_reset: callable) -> ft.Container:
             return
 
         # Clear all client storage
-        await page.shared_preferences.clear()
+        from prefs import get_prefs, reset_prefs
+        await get_prefs().clear()
+        reset_prefs()
 
         # Delete all local data (ChromaDB + chat history)
-        if _MAICAMPUS_DIR.exists():
-            shutil.rmtree(_MAICAMPUS_DIR, ignore_errors=True)
+        if APP_DIR.exists():
+            shutil.rmtree(APP_DIR, ignore_errors=True)
 
         status_text.value = "App reset complete."
         status_text.color = ft.Colors.GREEN

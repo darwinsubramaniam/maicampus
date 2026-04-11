@@ -1,11 +1,11 @@
 import threading
-from pathlib import Path
 
 from mem0 import Memory
 
 from ai_providers import Provider, ProviderConfig
+from constants import CHROMA_DB_PATH
 
-_CHROMA_PATH = str(Path.home() / ".maicampus" / "chroma_db")
+_CHROMA_PATH = str(CHROMA_DB_PATH)
 
 # Embedder config per provider
 _EMBEDDER_CONFIG = {

@@ -1,0 +1,21 @@
+"""Shared service instances — single source of truth for stores and getters."""
+
+from typing import Callable
+
+from campus_calendar.event_store import CalendarEventStore
+from memory import MemoryManager
+
+# Shared instances
+calendar_store = CalendarEventStore()
+
+# Memory manager getter (set during app init)
+_memory_getter: Callable[[], MemoryManager | None] = lambda: None
+
+
+def set_memory_getter(fn: Callable[[], MemoryManager | None]):
+    global _memory_getter
+    _memory_getter = fn
+
+
+def get_memory_manager() -> MemoryManager | None:
+    return _memory_getter()

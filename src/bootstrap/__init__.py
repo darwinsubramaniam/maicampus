@@ -3,16 +3,16 @@ import flet as ft
 from ai_providers import ProviderConfig
 from bootstrap.pipeline import build_pipeline
 from bootstrap.wizard import create_wizard
-
-_KEY_BOOTSTRAPPED = "maicampus.bootstrapped"
-
-
-async def is_bootstrapped(page: ft.Page) -> bool:
-    return await page.shared_preferences.get(_KEY_BOOTSTRAPPED) is True
+from constants import BOOTSTRAP_FLAG
 
 
-async def _mark_bootstrapped(page: ft.Page):
-    await page.shared_preferences.set(_KEY_BOOTSTRAPPED, True)
+def is_bootstrapped(page: ft.Page = None) -> bool:
+    return BOOTSTRAP_FLAG.exists()
+
+
+def _mark_bootstrapped():
+    BOOTSTRAP_FLAG.parent.mkdir(parents=True, exist_ok=True)
+    BOOTSTRAP_FLAG.touch()
 
 
 def create_bootstrap_view(page: ft.Page, on_complete: callable) -> ft.Container:
@@ -23,7 +23,7 @@ def create_bootstrap_view(page: ft.Page, on_complete: callable) -> ft.Container:
         saved_config["config"] = config
 
     async def on_finish():
-        await _mark_bootstrapped(page)
+        _mark_bootstrapped()
         on_complete(saved_config["config"])
 
     step_defs = build_pipeline(on_config_ready)
