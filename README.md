@@ -32,7 +32,6 @@ When you open MAiCampus for the first time, a step-by-step wizard guides you thr
 
 The wizard is plugin-based — new onboarding steps can be added without changing existing code.
 
-<!-- ![Bootstrap Wizard](docs/screenshots/bootstrap.png) -->
 
 ---
 
@@ -51,7 +50,7 @@ The main conversation interface with MAI, your AI campus companion.
 
 MAI streams responses in real-time with a "thinking" indicator. You can navigate to other pages while MAI is responding — the response continues in the background.
 
-<!-- ![Chat View](docs/screenshots/chat.png) -->
+![Chat with Check-In](docs/screenshots/ChatBot%20-%20With%20Check-In%20Capability.png)
 
 ---
 
@@ -70,7 +69,7 @@ A full calendar view for managing your academic and campus schedule.
 
 Events added via the calendar or via chat are stored in the same database and visible in both places.
 
-<!-- ![Calendar View](docs/screenshots/calendar.png) -->
+![Calendar & Planning](docs/screenshots/Planning%20Study%20and%20Life.png)
 
 ---
 
@@ -103,7 +102,7 @@ Configure your MAiCampus experience. Uses a NavigationRail layout with sections:
 - Requires typing "confirm" to prevent accidental resets
 - Returns to the onboarding wizard after reset
 
-<!-- ![Settings View](docs/screenshots/settings.png) -->
+![Settings](docs/screenshots/Setting%20Page.png)
 
 ---
 
