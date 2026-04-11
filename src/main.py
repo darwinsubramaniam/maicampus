@@ -137,6 +137,38 @@ def main(page: ft.Page):
         planner.start()
         planner_state["task"] = planner
 
+        # Check for app updates
+        import webbrowser
+        from updater import check_for_update
+
+        def _on_update(version, download_url, notes, update_type):
+            def _open_download(e):
+                webbrowser.open(download_url)
+
+            if update_type == "major":
+                notif_center.add(
+                    f"Major update {version} available. This may include breaking changes — please review release notes before updating.",
+                    icon=ft.Icons.WARNING_AMBER,
+                    color=ft.Colors.ORANGE,
+                    on_click=_open_download,
+                )
+            elif update_type == "minor":
+                notif_center.add(
+                    f"Update {version} available with new features. Tap to download.",
+                    icon=ft.Icons.SYSTEM_UPDATE,
+                    color=ft.Colors.TEAL,
+                    on_click=_open_download,
+                )
+            else:
+                notif_center.add(
+                    f"Patch {version} available. Tap to download.",
+                    icon=ft.Icons.SYSTEM_UPDATE,
+                    color=ft.Colors.TEAL,
+                    on_click=_open_download,
+                )
+
+        check_for_update(_on_update)
+
     def on_bootstrap_complete(config: ProviderConfig):
         on_config_save(config)
         page.navigation_bar = None
