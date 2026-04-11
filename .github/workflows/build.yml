@@ -72,6 +72,8 @@ jobs:
 
       - name: Build Windows app
         run: echo y | uv run --python ${{ env.PYTHON_VERSION }} flet build windows -v
+        env:
+          PYTHONIOENCODING: utf-8
 
       - name: Archive Windows build
         run: Compress-Archive -Path build/windows/* -DestinationPath maicampus-windows.zip
