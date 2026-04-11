@@ -3,6 +3,7 @@
 import asyncio
 import json
 import threading
+from datetime import date
 
 import flet as ft
 
@@ -36,6 +37,7 @@ class ChatEngine:
         self.on_response_complete = on_response_complete  # callback() after AI response saved
         self.user_name = user_name
         self.user_pic = user_pic
+        self.checkin_context: dict | None = None  # set by _start_checkin
 
         self.conversation: list[dict] = []
         self.chat_list = ft.ListView(expand=True, spacing=10, auto_scroll=True, padding=20)
@@ -58,7 +60,7 @@ class ChatEngine:
                 self.chat_list.controls.append(ChatMessage("MAI", msg["content"]))
 
     def _build_system_prompt(self, user_text: str) -> str:
-        today_str = __import__("datetime").date.today().isoformat()
+        today_str = date.today().isoformat()
         base_prompt = (
             "You are MAI, a friendly and proactive student companion for campus life. "
             "You help students manage their classes, assignments, project deadlines, "
@@ -71,6 +73,36 @@ class ChatEngine:
             "When the student confirms, use the create_calendar_event tool. "
             "Use get_upcoming_events or get_events_for_date to check the schedule when asked."
         )
+
+        # Detect if this is a progress check-in session (MAI initiated)
+        is_checkin = (
+            len(self.conversation) >= 1
+            and self.conversation[0].get("role") == "assistant"
+        )
+        if is_checkin:
+            ctx = self.checkin_context or {}
+            task_title = ctx.get("task_title", "their task")
+            event_id = ctx.get("event_id", "")
+            due_date = ctx.get("due_date", "")
+
+            base_prompt += (
+                "\n\nIMPORTANT: This is a PROGRESS CHECK-IN session that YOU (MAI) initiated.\n"
+                f"You are checking on: \"{task_title}\"\n"
+            )
+            if event_id:
+                base_prompt += f"Event ID: {event_id} (use this when calling update_task_status or log_task_completion)\n"
+            if due_date:
+                base_prompt += f"Due date: {due_date}\n"
+            base_prompt += (
+                "\nYour role in this check-in:\n"
+                "1. Understand where the student is with this specific task (not started, in progress, done)\n"
+                "2. Use update_task_status tool to record their progress (use the event_id above)\n"
+                "3. If they've completed it, ask how many hours it took and use log_task_completion\n"
+                "4. If they're struggling, offer encouragement and help plan\n"
+                "5. Be conversational and supportive, not interrogative\n"
+                "6. Stay focused on THIS task — don't drift to other topics unless the student brings them up\n"
+                "Remember: YOU initiated this conversation, the student is responding to your check-in."
+            )
 
         mgr = self.get_memory_manager()
         if mgr:

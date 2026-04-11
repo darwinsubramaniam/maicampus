@@ -21,7 +21,7 @@ async def load_config(page: ft.Page = None) -> ProviderConfig | None:
     )
 
 
-async def _save_config(page: ft.Page = None, config: ProviderConfig = None):
+async def save_config(page: ft.Page = None, config: ProviderConfig = None):
     """Persist AI config to client storage."""
     from prefs import get_prefs
     prefs = get_prefs()
@@ -75,7 +75,7 @@ def create_ai_settings(page: ft.Page, on_save: callable) -> ft.Container:
             api_key=api_key_field.value.strip(),
             model=model_field.value.strip() or None,
         )
-        await _save_config(page, config)
+        await save_config(page, config)
         on_save(config)
         status_text.value = f"Saved — using {provider.value} ({config.effective_model})"
         status_text.color = ft.Colors.GREEN

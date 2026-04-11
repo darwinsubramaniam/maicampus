@@ -4,24 +4,7 @@ import flet as ft
 
 from chat.chat_core import ChatEngine
 from chat.session_store import SessionStore
-
-
-def _relative_time(iso_str: str) -> str:
-    from datetime import datetime, timezone
-    try:
-        dt = datetime.fromisoformat(iso_str)
-        now = datetime.now(timezone.utc)
-        delta = now - dt
-        if delta.days == 0:
-            return "Today"
-        elif delta.days == 1:
-            return "Yesterday"
-        elif delta.days < 7:
-            return f"{delta.days}d ago"
-        else:
-            return dt.strftime("%b %d")
-    except (ValueError, TypeError):
-        return ""
+from constants import relative_time as _relative_time
 
 
 def create_floating_chat(

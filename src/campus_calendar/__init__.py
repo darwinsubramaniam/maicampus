@@ -16,7 +16,6 @@ def create_calendar_view(
     get_config: callable = None,
     get_calendar_context_fn: callable = None,
     on_tool_executed: callable = None,
-    get_user_profile: callable = None,
 ) -> ft.Stack:
     store = CalendarEventStore()
     selected_date = {"value": date.today()}

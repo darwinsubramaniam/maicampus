@@ -1,4 +1,8 @@
+import json
+
 import flet as ft
+
+from constants import PROFILE_CACHE_PATH, make_avatar
 
 _KEY_PREFIX = "maicampus.profile."
 
@@ -20,23 +24,16 @@ async def save_profile(page: ft.Page = None, name: str = "", email: str = "", pi
     await prefs.set(f"{_KEY_PREFIX}name", name)
     await prefs.set(f"{_KEY_PREFIX}email", email)
     await prefs.set(f"{_KEY_PREFIX}pic_path", pic_path)
-
-
-def _make_avatar(pic_path: str = "") -> ft.CircleAvatar:
-    if pic_path:
-        return ft.CircleAvatar(foreground_image_src=pic_path, radius=40)
-    return ft.CircleAvatar(
-        content=ft.Icon(ft.Icons.PERSON, size=32),
-        radius=40,
-        bgcolor=ft.Colors.PRIMARY_CONTAINER,
-    )
+    # File cache for sync loading
+    PROFILE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PROFILE_CACHE_PATH.write_text(json.dumps({"name": name, "email": email, "pic_path": pic_path}))
 
 
 def create_profile_settings(page: ft.Page) -> ft.Container:
     name_field = ft.TextField(label="Name", width=400)
     email_field = ft.TextField(label="Email", width=400)
 
-    pic_container = ft.Container(content=_make_avatar())
+    pic_container = ft.Container(content=make_avatar())
     pic_path_state = {"path": ""}
 
     status_text = ft.Text("", color=ft.Colors.GREEN)
@@ -50,7 +47,7 @@ def create_profile_settings(page: ft.Page) -> ft.Container:
         )
         if files:
             pic_path_state["path"] = files[0].path
-            pic_container.content = _make_avatar(files[0].path)
+            pic_container.content = make_avatar(files[0].path)
             page.update()
 
     async def do_save(e):
@@ -76,7 +73,7 @@ def create_profile_settings(page: ft.Page) -> ft.Container:
         email_field.value = profile["email"]
         if profile["pic_path"]:
             pic_path_state["path"] = profile["pic_path"]
-            pic_container.content = _make_avatar(profile["pic_path"])
+            pic_container.content = make_avatar(profile["pic_path"])
         page.update()
 
     page.run_task(_populate)

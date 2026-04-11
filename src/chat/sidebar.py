@@ -1,23 +1,6 @@
-from datetime import datetime, timezone
-
 import flet as ft
 
-
-def _relative_time(iso_str: str) -> str:
-    try:
-        dt = datetime.fromisoformat(iso_str)
-        now = datetime.now(timezone.utc)
-        delta = now - dt
-        if delta.days == 0:
-            return "Today"
-        elif delta.days == 1:
-            return "Yesterday"
-        elif delta.days < 7:
-            return f"{delta.days} days ago"
-        else:
-            return dt.strftime("%b %d")
-    except (ValueError, TypeError):
-        return ""
+from constants import relative_time as _relative_time
 
 
 def create_sidebar(
@@ -36,11 +19,23 @@ def create_sidebar(
         session_list.controls.clear()
         for session in sessions:
             is_active = session["id"] == current_id
+            is_checkin = session.get("session_type") == "checkin"
+            title_controls = []
+            if is_checkin:
+                title_controls.append(
+                    ft.Container(
+                        content=ft.Text("CHECK-IN", size=8, color=ft.Colors.ORANGE, weight=ft.FontWeight.BOLD),
+                        padding=ft.Padding(left=4, right=4, top=1, bottom=1),
+                        border_radius=3,
+                        bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.ORANGE),
+                    )
+                )
             tile = ft.Container(
                 content=ft.Row(
                     controls=[
                         ft.Column(
                             [
+                                *title_controls,
                                 ft.Text(
                                     session.get("title", "New Chat"),
                                     size=13,

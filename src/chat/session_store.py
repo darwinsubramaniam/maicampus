@@ -1,11 +1,12 @@
 import threading
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
 from tinydb import Query, TinyDB
 
-_DB_PATH = Path.home() / ".maicampus" / "chat_history.json"
+from constants import CHAT_DB_PATH
+
+_DB_PATH = CHAT_DB_PATH
 
 
 class SessionStore:
@@ -20,6 +21,8 @@ class SessionStore:
         session = {
             "id": str(uuid.uuid4()),
             "title": title,
+            "session_type": "chat",  # "chat" or "checkin"
+            "checkin_context": None,  # {"event_id": "...", "task_title": "...", "due_date": "..."}
             "created_at": now,
             "updated_at": now,
             "messages": [],
@@ -48,6 +51,10 @@ class SessionStore:
                 },
                 self._q.id == session_id,
             )
+
+    def update_event_meta(self, session_id: str, data: dict):
+        with self._lock:
+            self._db.update(data, self._q.id == session_id)
 
     def update_title(self, session_id: str, title: str):
         with self._lock:

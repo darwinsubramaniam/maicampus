@@ -2,18 +2,22 @@ import threading
 
 import flet as ft
 
+from constants import BOOTSTRAP_FLAG
+
 from ai_providers import ProviderConfig
 from bootstrap import create_bootstrap_view, is_bootstrapped
 from campus_calendar import create_calendar_view, get_calendar_context
-from campus_calendar.event_store import CalendarEventStore
 from chat import create_chat_view
 from memory import MemoryManager
 from notifications import NotificationCenter
+from planner import SmartPlannerTask
+import services
 from settings import create_settings_view
 from theme import apply_theme
 
 # Import to trigger tool registration
-import tools.calendar_tools as _calendar_tools
+import tools.calendar_tools
+import tools.planner_tools
 
 
 def main(page: ft.Page):
@@ -22,7 +26,7 @@ def main(page: ft.Page):
 
     current_config: dict = {"config": None}
     memory_state: dict = {"mgr": None}
-    calendar_store = CalendarEventStore()
+    planner_state: dict = {"task": None}
 
     def get_config() -> ProviderConfig | None:
         return current_config["config"]
@@ -31,24 +35,28 @@ def main(page: ft.Page):
         return memory_state["mgr"]
 
     def get_cal_context() -> str:
-        return get_calendar_context(calendar_store)
+        return get_calendar_context(services.calendar_store)
 
     def on_config_save(config: ProviderConfig):
         current_config["config"] = config
         mgr = MemoryManager(config)
         memory_state["mgr"] = mgr
+        services.set_memory_getter(get_memory_manager)
         threading.Thread(target=mgr.initialize, daemon=True).start()
 
     def show_bootstrap():
         current_config["config"] = None
         memory_state["mgr"] = None
+        if planner_state["task"]:
+            planner_state["task"].stop()
+            planner_state["task"] = None
         page.navigation_bar = None
         page.controls.clear()
         bootstrap_view = create_bootstrap_view(page, on_bootstrap_complete)
         page.add(bootstrap_view)
 
     def show_main_app():
-        _calendar_tools.set_memory_getter(get_memory_manager)
+        services.set_memory_getter(get_memory_manager)
 
         notif_center = NotificationCenter(page)
 
@@ -67,7 +75,16 @@ def main(page: ft.Page):
             get_calendar_context_fn=get_cal_context,
             on_tool_executed=_on_tool_executed,
         )
-        settings_view = create_settings_view(page, on_ai_save=on_config_save, on_reset=show_bootstrap)
+        # Create planner early so we can pass scan to settings
+        planner = SmartPlannerTask(
+            store=services.calendar_store,
+            get_memory_manager=get_memory_manager,
+            notification_center=notif_center,
+            page=page,
+            open_chat_fn=lambda *a, **kw: None,  # wired after chat_view exists
+        )
+
+        settings_view = create_settings_view(page, on_ai_save=on_config_save, on_reset=show_bootstrap, on_scan=planner._scan)
 
         body = ft.Container(content=chat_view, expand=True)
 
@@ -79,6 +96,14 @@ def main(page: ft.Page):
                 body.content = calendar_view
             else:
                 body.content = settings_view
+            page.update()
+
+        # Chat deep-link from planner notifications
+        def open_chat_with_prompt(mai_message: str, title: str = "Task", event_id: str = None, due_date: str = None):
+            """Open chat with a progress check-in initiated by MAI."""
+            page.navigation_bar.selected_index = 0
+            body.content = chat_view
+            chat_view.start_checkin(title, mai_message, event_id=event_id, due_date=due_date)
             page.update()
 
         page.navigation_bar = ft.NavigationBar(
@@ -106,16 +131,18 @@ def main(page: ft.Page):
         page.controls.clear()
         page.add(body)
 
+        # Wire planner chat callback and start
+        planner._open_chat_fn = open_chat_with_prompt
+        planner.start()
+        planner_state["task"] = planner
+
     def on_bootstrap_complete(config: ProviderConfig):
         on_config_save(config)
         page.navigation_bar = None
         page.controls.clear()
         show_main_app()
 
-    # Check bootstrap using file-based flag (avoids SharedPreferences timing issues)
-    from pathlib import Path
-    _bootstrap_flag = Path.home() / ".maicampus" / ".bootstrapped"
-    if _bootstrap_flag.exists():
+    if BOOTSTRAP_FLAG.exists():
         show_main_app()
     else:
         bootstrap_view = create_bootstrap_view(page, on_bootstrap_complete)

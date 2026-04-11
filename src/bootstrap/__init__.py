@@ -1,21 +1,18 @@
-from pathlib import Path
-
 import flet as ft
 
 from ai_providers import ProviderConfig
 from bootstrap.pipeline import build_pipeline
 from bootstrap.wizard import create_wizard
-
-_BOOTSTRAP_FLAG = Path.home() / ".maicampus" / ".bootstrapped"
+from constants import BOOTSTRAP_FLAG
 
 
 def is_bootstrapped(page: ft.Page = None) -> bool:
-    return _BOOTSTRAP_FLAG.exists()
+    return BOOTSTRAP_FLAG.exists()
 
 
-def _mark_bootstrapped(page: ft.Page = None):
-    _BOOTSTRAP_FLAG.parent.mkdir(parents=True, exist_ok=True)
-    _BOOTSTRAP_FLAG.touch()
+def _mark_bootstrapped():
+    BOOTSTRAP_FLAG.parent.mkdir(parents=True, exist_ok=True)
+    BOOTSTRAP_FLAG.touch()
 
 
 def create_bootstrap_view(page: ft.Page, on_complete: callable) -> ft.Container:

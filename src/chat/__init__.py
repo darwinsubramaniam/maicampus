@@ -1,10 +1,11 @@
 import asyncio
 import json
 import threading
+from datetime import date
 
 import flet as ft
 
-from ai_providers import Provider, ProviderConfig, StreamItem, TextChunk, ToolCall, stream_response
+from ai_providers import Provider, ProviderConfig, TextChunk, ToolCall, stream_response
 from notifications import NotificationCenter
 from chat.input_bar import create_input_bar
 from chat.message import ChatMessage
@@ -23,6 +24,46 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
     profile: dict = {"name": "You", "pic_path": ""}
     conversation: list[dict] = []
     state: dict = {"session": None}
+
+    def _build_checkin_banner(task_title: str, due_date: str = None) -> ft.Container:
+        due_text = f" — Due: {due_date}" if due_date else ""
+        return ft.Container(
+            content=ft.Column(
+                controls=[
+                    ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.FACT_CHECK, size=18, color=ft.Colors.ORANGE),
+                            ft.Text(
+                                "Progress Check-in",
+                                size=13,
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.ORANGE,
+                            ),
+                        ],
+                        spacing=6,
+                    ),
+                    ft.Text(
+                        f"Task: {task_title}{due_text}",
+                        size=12,
+                        color=ft.Colors.ON_SURFACE,
+                        weight=ft.FontWeight.W_500,
+                    ),
+                    ft.Text(
+                        "This conversation was initiated by MAI to check on your progress. "
+                        "Please keep the discussion focused on this task for best tracking.",
+                        size=11,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                        italic=True,
+                    ),
+                ],
+                spacing=4,
+                tight=True,
+            ),
+            padding=ft.Padding(left=14, right=14, top=10, bottom=10),
+            border_radius=10,
+            bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ORANGE),
+            border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ft.Colors.ORANGE)),
+        )
 
     def _active_session_id() -> str | None:
         s = state["session"]
@@ -48,6 +89,14 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
         conversation.extend(fresh.get("messages", []))
 
         chat_list.controls.clear()
+
+        # Show check-in banner if this is a check-in session
+        if fresh.get("session_type") == "checkin":
+            ctx = fresh.get("checkin_context") or {}
+            chat_list.controls.append(
+                _build_checkin_banner(ctx.get("task_title", "Task"), ctx.get("due_date"))
+            )
+
         for msg in conversation:
             if msg["role"] == "user":
                 chat_list.controls.append(
@@ -68,7 +117,7 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
             page.update()
 
     def _build_system_prompt(user_text: str) -> str:
-        today_str = __import__("datetime").date.today().isoformat()
+        today_str = date.today().isoformat()
         base_prompt = (
             "You are MAI, a friendly and proactive student companion for campus life. "
             "You help students manage their classes, assignments, project deadlines, "
@@ -103,6 +152,32 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
                     base_prompt += f"\n\n{cal_block}"
             except Exception:
                 pass
+
+        # Check-in context
+        session = state.get("session")
+        if session and session.get("session_type") == "checkin":
+            ctx = session.get("checkin_context") or {}
+            task_title = ctx.get("task_title", "their task")
+            event_id = ctx.get("event_id", "")
+            due_date = ctx.get("due_date", "")
+
+            base_prompt += (
+                "\n\nIMPORTANT: This is a PROGRESS CHECK-IN session that YOU (MAI) initiated.\n"
+                f"You are checking on: \"{task_title}\"\n"
+            )
+            if event_id:
+                base_prompt += f"Event ID: {event_id} (use this when calling update_task_status or log_task_completion)\n"
+            if due_date:
+                base_prompt += f"Due date: {due_date}\n"
+            base_prompt += (
+                "\nYour role in this check-in:\n"
+                "1. Understand where the student is with this specific task\n"
+                "2. Use update_task_status tool to record their progress (use the event_id above)\n"
+                "3. If completed, ask how many hours it took and use log_task_completion\n"
+                "4. If struggling, offer encouragement and help plan\n"
+                "5. Stay focused on THIS task\n"
+                "Remember: YOU initiated this conversation."
+            )
 
         return base_prompt
 
@@ -169,20 +244,14 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
         page.update()
 
         async def do_stream_async():
-            print(f"[MAI] do_stream_async ENTERED", flush=True)
             collected = []
             streaming_started = False
             try:
                 system_prompt = _build_system_prompt(text)
-                print(f"[MAI] system prompt built", flush=True)
                 messages_to_send = [{"role": "system", "content": system_prompt}] + list(conversation)
                 provider_tools = get_tools_for_provider(config.provider)
-                import sys
-                print(f"[MAI] Provider: {config.provider}, Tools count: {len(provider_tools) if provider_tools else 0}", flush=True)
-                if provider_tools:
-                    print(f"[MAI] Tools: {[t.get('name', t.get('function', {}).get('name', '?')) if isinstance(t, dict) else str(type(t)) for t in provider_tools]}", flush=True)
 
-                max_tool_rounds = 5  # prevent infinite loops
+                max_tool_rounds = 5
                 tool_round = 0
 
                 while tool_round < max_tool_rounds:
@@ -222,9 +291,7 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
                     # Execute tools and show toast for calendar events
                     results = []
                     for tc in tool_calls_this_turn:
-                        print(f"[MAI] Tool call: {tc.name}({tc.arguments})", flush=True)
                         result = execute_tool(tc.name, tc.arguments)
-                        print(f"[MAI] Tool result: {result}", flush=True)
                         results.append(result)
                         if tc.name == "create_calendar_event" and result.get("success") and notifications:
                             notifications.add(
@@ -262,9 +329,6 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
                     threading.Thread(target=_store, daemon=True).start()
 
             except Exception as ex:
-                import traceback
-                traceback.print_exc()
-                print(f"[MAI] ERROR: {ex}", flush=True)
                 ai_msg.set_error(str(ex))
                 page.update()
 
@@ -364,23 +428,94 @@ def create_chat_view(page: ft.Page, get_config: callable, get_memory_manager: ca
 
     chat_panel = ft.Stack(controls=chat_stack_controls, expand=True)
 
-    # Load profile and restore session
+    # Load profile from file-based cache (sync, instant)
+    from pathlib import Path
+    _profile_cache = Path.home() / ".maicampus" / "profile.json"
+    if _profile_cache.exists():
+        try:
+            import json as _json
+            cached = _json.loads(_profile_cache.read_text())
+            profile["name"] = cached.get("name") or "You"
+            profile["pic_path"] = cached.get("pic_path") or ""
+        except Exception:
+            pass
+
+    # Load from SharedPreferences async, then restore session
     async def _init_chat():
         try:
             p = await load_profile()
             profile["name"] = p.get("name") or "You"
             profile["pic_path"] = p.get("pic_path") or ""
+            # Cache for next sync load
+            import json as _json
+            _profile_cache.parent.mkdir(parents=True, exist_ok=True)
+            _profile_cache.write_text(_json.dumps({"name": profile["name"], "pic_path": profile["pic_path"]}))
         except Exception:
             pass
 
+        # Restore most recent session AFTER profile is loaded
+        sessions = store.get_all_sessions()
+        if sessions:
+            load_session(sessions[0])
+        page.update()
+
+    page.run_task(_init_chat)
+
+    # Also restore session sync with cached profile (immediate, no wait)
+    if profile["name"] != "You" or profile["pic_path"]:
         sessions = store.get_all_sessions()
         if sessions:
             load_session(sessions[0])
 
-    page.run_task(_init_chat)
-
-    return ft.Row(
+    view = ft.Row(
         expand=True,
         controls=[sidebar_container, sidebar_divider, chat_panel],
         spacing=0,
     )
+
+    # Expose for external access (e.g. planner deep-link)
+    view.send_prompt = lambda prompt: _auto_send(prompt)
+    view.start_checkin = lambda title, mai_message, event_id=None, due_date=None: _start_checkin(title, mai_message, event_id, due_date)
+
+    def _auto_send(prompt: str):
+        message_input.value = prompt
+        send_message(None)
+
+    def _start_checkin(title: str, mai_message: str, event_id: str = None, due_date: str = None):
+        """Start a progress check-in session initiated by MAI."""
+        session = store.create_session(title=f"[Check-in] {title}")
+        state["session"] = session
+
+        # Store check-in context in session
+        checkin_ctx = {
+            "task_title": title,
+            "event_id": event_id,
+            "due_date": due_date,
+        }
+        store.update_event_meta(session["id"], {
+            "session_type": "checkin",
+            "checkin_context": checkin_ctx,
+        })
+        state["session"]["session_type"] = "checkin"
+        state["session"]["checkin_context"] = checkin_ctx
+
+        # Clear current chat
+        conversation.clear()
+        chat_list.controls.clear()
+
+        # Add check-in banner
+        chat_list.controls.append(_build_checkin_banner(title, due_date))
+
+        # Add MAI's check-in message first (MAI initiates, not the user)
+        conversation.append({
+            "role": "assistant",
+            "content": mai_message,
+            "provider": "MAI",
+        })
+        chat_list.controls.append(ChatMessage("MAI", mai_message))
+
+        _save_to_db()
+        sidebar_refresh()
+        page.update()
+
+    return view

@@ -9,7 +9,6 @@ To reorder: change the list order below.
 To remove: delete or comment out the entry.
 """
 
-from ai_providers import ProviderConfig
 from bootstrap.steps import ai_provider, done, profile, welcome
 
 

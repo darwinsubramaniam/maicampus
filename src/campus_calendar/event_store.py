@@ -1,13 +1,13 @@
 import threading
 import uuid
-from datetime import date, datetime, timezone
-from pathlib import Path
+from datetime import date, datetime, timedelta, timezone
 
 from tinydb import Query, TinyDB
 
 from campus_calendar.event_model import expand_occurrences
+from constants import CALENDAR_DB_PATH
 
-_DB_PATH = Path.home() / ".maicampus" / "calendar_events.json"
+_DB_PATH = CALENDAR_DB_PATH
 
 
 class CalendarEventStore:
@@ -29,6 +29,12 @@ class CalendarEventStore:
             "recurrence_end_date": data.get("recurrence_end_date"),
             "description": data.get("description", ""),
             "color": data.get("color", ""),
+            "status": data.get("status"),
+            "time_estimate_hours": data.get("time_estimate_hours"),
+            "actual_hours_spent": data.get("actual_hours_spent"),
+            "priority": data.get("priority"),
+            "subject": data.get("subject"),
+            "completed_at": data.get("completed_at"),
             "created_at": now,
             "updated_at": now,
         }
@@ -70,7 +76,7 @@ class CalendarEventStore:
     def get_upcoming_events(self, days: int = 7) -> list[tuple[date, dict]]:
         """Get upcoming events as (date, event) pairs sorted by date."""
         today = date.today()
-        end = today + __import__("datetime").timedelta(days=days)
+        end = today + timedelta(days=days)
         by_date = self.get_events_in_range(today, end)
         result = []
         for d in sorted(by_date):
@@ -82,6 +88,15 @@ class CalendarEventStore:
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
         with self._lock:
             self._db.update(data, self._q.id == event_id)
+
+    def get_actionable_tasks(self, days: int = 14) -> list[tuple[date, dict]]:
+        """Get upcoming assignments/exams that need attention."""
+        upcoming = self.get_upcoming_events(days=days)
+        return [
+            (d, e) for d, e in upcoming
+            if e.get("type") in ("assignment", "exam")
+            and e.get("status") != "completed"
+        ]
 
     def delete_event(self, event_id: str):
         with self._lock:

@@ -1,18 +1,9 @@
 from datetime import date, datetime, timezone
-from typing import Callable
 
 from campus_calendar.calendar_memory import index_event_to_memory
 from campus_calendar.event_model import EVENT_COLORS, EVENT_LABELS, event_time_str, event_type_from_str
-from campus_calendar.event_store import CalendarEventStore
+from services import calendar_store as _store, get_memory_manager as _get_mgr
 from tools import ToolDefinition, register
-
-_store = CalendarEventStore()
-_mgr_getter: Callable = lambda: None
-
-
-def set_memory_getter(fn: Callable):
-    global _mgr_getter
-    _mgr_getter = fn
 
 
 def _handle_create_event(args: dict) -> dict:
@@ -46,7 +37,7 @@ def _handle_create_event(args: dict) -> dict:
     }
 
     event = _store.create_event(event_data)
-    index_event_to_memory(event, _mgr_getter())
+    index_event_to_memory(event, _get_mgr())
 
     return {
         "success": True,

@@ -10,6 +10,13 @@ class EventType(Enum):
     CUSTOM = "custom"
 
 
+class EventStatus(Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    OVERDUE = "overdue"
+
+
 EVENT_COLORS = {
     EventType.CLASS: "#1565C0",
     EventType.ASSIGNMENT: "#E65100",

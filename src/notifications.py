@@ -81,13 +81,14 @@ class NotificationCenter:
     def panel(self) -> ft.Container:
         return self._panel
 
-    def add(self, message: str, icon: str = ft.Icons.INFO_OUTLINE, color: str = ft.Colors.TEAL):
-        """Add a notification."""
+    def add(self, message: str, icon: str = ft.Icons.INFO_OUTLINE, color: str = ft.Colors.TEAL, on_click: callable = None):
+        """Add a notification. on_click is called when the notification tile is tapped."""
         self._items.insert(0, {
             "message": message,
             "time": datetime.now(),
             "icon": icon,
             "color": color,
+            "on_click": on_click,
         })
         self._badge_count += 1
         self._badge.content.value = str(self._badge_count)
@@ -102,6 +103,14 @@ class NotificationCenter:
             return
         for item in self._items:
             time_str = item["time"].strftime("%I:%M %p").lstrip("0")
+            raw_click = item.get("on_click")
+            def _make_click(fn):
+                def _handler(e):
+                    self._panel.visible = False
+                    self._page.update()
+                    fn(e)
+                return _handler
+            click_fn = _make_click(raw_click) if raw_click else None
             tile = ft.Container(
                 content=ft.Row(
                     controls=[
@@ -121,6 +130,8 @@ class NotificationCenter:
                 padding=ft.Padding(left=10, right=10, top=8, bottom=8),
                 border_radius=8,
                 bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                on_click=click_fn,
+                ink=True if click_fn else False,
             )
             self._list.controls.append(tile)
 
