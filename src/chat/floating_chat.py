@@ -90,10 +90,11 @@ def create_floating_chat(
     )
 
     def _refresh_history():
-        sessions = store.get_all_sessions()
+        all_sessions = store.get_all_sessions()
+        sessions = [s for s in all_sessions if s.get("session_type") != "checkin"]
         current_id = state["session"]["id"] if state["session"] else None
         history_list.controls.clear()
-        for session in sessions[:15]:  # Show last 15
+        for session in sessions[:15]:
             is_active = session["id"] == current_id
             tile = ft.Container(
                 content=ft.Row(
