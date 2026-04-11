@@ -21,9 +21,8 @@ def create_reset_settings(page: ft.Page, on_reset: callable) -> ft.Container:
             return
 
         # Clear all client storage
-        from prefs import get_prefs, reset_prefs
+        from prefs import get_prefs
         await get_prefs().clear()
-        reset_prefs()
 
         # Delete all local data (ChromaDB + chat history)
         if APP_DIR.exists():

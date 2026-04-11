@@ -50,6 +50,7 @@ def main(page: ft.Page):
         if planner_state["task"]:
             planner_state["task"].stop()
             planner_state["task"] = None
+        services.reset()
         page.navigation_bar = None
         page.controls.clear()
         bootstrap_view = create_bootstrap_view(page, on_bootstrap_complete)

@@ -19,3 +19,10 @@ def set_memory_getter(fn: Callable[[], MemoryManager | None]):
 
 def get_memory_manager() -> MemoryManager | None:
     return _memory_getter()
+
+
+def reset():
+    """Reinitialize stores after app reset."""
+    global calendar_store, _memory_getter
+    calendar_store = CalendarEventStore()
+    _memory_getter = lambda: None
