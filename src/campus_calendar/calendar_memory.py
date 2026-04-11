@@ -1,9 +1,15 @@
+from __future__ import annotations
+
+import contextlib
 import threading
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from campus_calendar.event_model import EVENT_LABELS, event_type_from_str
-from campus_calendar.event_store import CalendarEventStore
-from memory import MemoryManager
+
+if TYPE_CHECKING:
+    from campus_calendar.event_store import CalendarEventStore
+    from memory import MemoryManager
 
 
 def index_event_to_memory(event: dict, mgr: MemoryManager | None):
@@ -26,10 +32,8 @@ def index_event_to_memory(event: dict, mgr: MemoryManager | None):
     assistant_text = f"Noted! I've added '{title}' ({label}) to your calendar for {start.strftime('%B %d, %Y')}."
 
     def _do():
-        try:
+        with contextlib.suppress(Exception):
             mgr.add_turn(user_text, assistant_text)
-        except Exception:
-            pass
 
     threading.Thread(target=_do, daemon=True).start()
 

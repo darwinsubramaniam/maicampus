@@ -1,4 +1,11 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import flet as ft
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from settings.ai_settings import create_ai_settings
 from settings.appearance_settings import create_appearance_settings
@@ -7,7 +14,9 @@ from settings.profile_settings import create_profile_settings
 from settings.reset_settings import create_reset_settings
 
 
-def create_settings_view(page: ft.Page, on_ai_save: callable, on_reset: callable, on_scan: callable = None) -> ft.Row:
+def create_settings_view(
+    page: ft.Page, on_ai_save: Callable, on_reset: Callable, on_scan: Callable | None = None
+) -> ft.Row:
     profile_section = create_profile_settings(page)
     appearance_section = create_appearance_settings(page)
     ai_section = create_ai_settings(page, on_ai_save)
@@ -15,11 +24,36 @@ def create_settings_view(page: ft.Page, on_ai_save: callable, on_reset: callable
     reset_section = create_reset_settings(page, on_reset)
 
     sections = [
-        {"label": "Profile", "icon": ft.Icons.PERSON_OUTLINED, "selected_icon": ft.Icons.PERSON, "content": profile_section},
-        {"label": "Appearance", "icon": ft.Icons.PALETTE_OUTLINED, "selected_icon": ft.Icons.PALETTE, "content": appearance_section},
-        {"label": "AI Provider", "icon": ft.Icons.SMART_TOY_OUTLINED, "selected_icon": ft.Icons.SMART_TOY, "content": ai_section},
-        {"label": "Planner", "icon": ft.Icons.AUTO_AWESOME_OUTLINED, "selected_icon": ft.Icons.AUTO_AWESOME, "content": planner_section},
-        {"label": "Reset", "icon": ft.Icons.DELETE_OUTLINE, "selected_icon": ft.Icons.DELETE_FOREVER, "content": reset_section},
+        {
+            "label": "Profile",
+            "icon": ft.Icons.PERSON_OUTLINED,
+            "selected_icon": ft.Icons.PERSON,
+            "content": profile_section,
+        },
+        {
+            "label": "Appearance",
+            "icon": ft.Icons.PALETTE_OUTLINED,
+            "selected_icon": ft.Icons.PALETTE,
+            "content": appearance_section,
+        },
+        {
+            "label": "AI Provider",
+            "icon": ft.Icons.SMART_TOY_OUTLINED,
+            "selected_icon": ft.Icons.SMART_TOY,
+            "content": ai_section,
+        },
+        {
+            "label": "Planner",
+            "icon": ft.Icons.AUTO_AWESOME_OUTLINED,
+            "selected_icon": ft.Icons.AUTO_AWESOME,
+            "content": planner_section,
+        },
+        {
+            "label": "Reset",
+            "icon": ft.Icons.DELETE_OUTLINE,
+            "selected_icon": ft.Icons.DELETE_FOREVER,
+            "content": reset_section,
+        },
     ]
 
     content_area = ft.Container(

@@ -32,3 +32,46 @@ copyright = "Copyright (C) 2023-2026 by maicampus. All rights reserved."
 
 [tool.flet.app]
 path = "src"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+reportMissingImports = "warning"
+
+[tool.ruff]
+src = ["src"]
+target-version = "py314"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "F",     # pyflakes
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "TCH",   # flake8-type-checking
+    "RUF",   # ruff-specific rules
+]
+ignore = [
+    "E731",  # allow lambda assignments — used for lightweight callbacks
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "ai_providers",
+    "bootstrap",
+    "campus_calendar",
+    "chat",
+    "memory",
+    "planner",
+    "settings",
+    "tools",
+    "services",
+    "theme",
+]

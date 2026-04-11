@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 from enum import Enum
-from typing import Generator
 
 
 class Provider(Enum):
@@ -44,8 +49,10 @@ StreamItem = TextChunk | ToolCall
 
 
 def stream_response(
-    config: ProviderConfig, messages: list[dict], tools: list | None = None,
-) -> Generator[StreamItem, None, None]:
+    config: ProviderConfig,
+    messages: list[dict],
+    tools: list | None = None,
+) -> Generator[StreamItem]:
     """Stream AI response. Yields TextChunk for text and ToolCall for tool invocations."""
     system_msg = None
     chat_messages = messages
@@ -63,8 +70,10 @@ def stream_response(
 
 
 def _stream_openai(
-    config: ProviderConfig, messages: list[dict], tools: list | None = None,
-) -> Generator[StreamItem, None, None]:
+    config: ProviderConfig,
+    messages: list[dict],
+    tools: list | None = None,
+) -> Generator[StreamItem]:
     from openai import OpenAI
 
     client = OpenAI(api_key=config.api_key)
@@ -110,8 +119,11 @@ def _stream_openai(
 
 
 def _stream_claude(
-    config: ProviderConfig, messages: list[dict], system: str | None = None, tools: list | None = None,
-) -> Generator[StreamItem, None, None]:
+    config: ProviderConfig,
+    messages: list[dict],
+    system: str | None = None,
+    tools: list | None = None,
+) -> Generator[StreamItem]:
     from anthropic import Anthropic
 
     client = Anthropic(api_key=config.api_key)
@@ -160,8 +172,11 @@ def _stream_claude(
 
 
 def _stream_gemini(
-    config: ProviderConfig, messages: list[dict], system: str | None = None, tools: list | None = None,
-) -> Generator[StreamItem, None, None]:
+    config: ProviderConfig,
+    messages: list[dict],
+    system: str | None = None,
+    tools: list | None = None,
+) -> Generator[StreamItem]:
     from google import genai
     from google.genai import types
 
@@ -171,10 +186,7 @@ def _stream_gemini(
     for msg in messages:
         role = "user" if msg["role"] == "user" else "model"
         # Handle complex content (tool results)
-        if isinstance(msg.get("content"), list):
-            parts = msg["content"]
-        else:
-            parts = [{"text": msg["content"]}]
+        parts = msg["content"] if isinstance(msg.get("content"), list) else [{"text": msg["content"]}]
         contents.append({"role": role, "parts": parts})
 
     config_kwargs = {}
@@ -190,13 +202,16 @@ def _stream_gemini(
     )
     for chunk in response:
         if chunk.candidates:
-            for part in chunk.candidates[0].content.parts:
+            candidate = chunk.candidates[0]
+            if not candidate.content:
+                continue
+            for part in candidate.content.parts or []:
                 if hasattr(part, "text") and part.text:
                     yield TextChunk(part.text)
                 elif hasattr(part, "function_call") and part.function_call:
                     fc = part.function_call
                     yield ToolCall(
-                        call_id=fc.name,
-                        name=fc.name,
+                        call_id=fc.name or "",
+                        name=fc.name or "",
                         arguments=dict(fc.args) if fc.args else {},
                     )

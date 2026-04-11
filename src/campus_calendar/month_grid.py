@@ -1,18 +1,23 @@
+from __future__ import annotations
+
 import calendar as pycal
 from datetime import date, timedelta
+from typing import TYPE_CHECKING
 
 import flet as ft
 
-from campus_calendar.event_model import event_type_from_str, EVENT_COLORS
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
+from campus_calendar.event_model import EVENT_COLORS, event_type_from_str
 
 _WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def create_month_grid(
-    on_day_select: callable,
-    get_events_in_range: callable,
-) -> tuple[ft.Container, callable]:
+    on_day_select: Callable,
+    get_events_in_range: Callable,
+) -> tuple[ft.Container, Callable]:
     """
     Returns (container, refresh(year, month, selected_date)).
     on_day_select(date) called when a day is tapped.
@@ -50,7 +55,13 @@ def create_month_grid(
         header_row = ft.Row(
             controls=[
                 ft.Container(
-                    content=ft.Text(label, size=11, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
+                    content=ft.Text(
+                        label,
+                        size=11,
+                        weight=ft.FontWeight.W_600,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
                     expand=True,
                     alignment=ft.Alignment.CENTER,
                     height=28,
@@ -80,11 +91,17 @@ def create_month_grid(
                 if len(day_events) > 3:
                     dots.append(ft.Text(f"+{len(day_events) - 3}", size=8, color=ft.Colors.ON_SURFACE_VARIANT))
 
-                dot_row = ft.Row(controls=dots, spacing=2, alignment=ft.MainAxisAlignment.CENTER) if dots else ft.Container(height=6)
+                dot_row = (
+                    ft.Row(controls=dots, spacing=2, alignment=ft.MainAxisAlignment.CENTER)
+                    if dots
+                    else ft.Container(height=6)
+                )
 
                 day_num_color = (
-                    ft.Colors.WHITE if is_selected
-                    else ft.Colors.ON_SURFACE if is_current_month
+                    ft.Colors.WHITE
+                    if is_selected
+                    else ft.Colors.ON_SURFACE
+                    if is_current_month
                     else ft.Colors.with_opacity(0.3, ft.Colors.ON_SURFACE)
                 )
 
@@ -156,7 +173,7 @@ def create_month_grid(
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
-    def refresh(year: int = None, month: int = None, selected: date = None):
+    def render(year: int | None = None, month: int | None = None, selected: date | None = None):
         if year is not None:
             state["year"] = year
         if month is not None:
@@ -175,4 +192,4 @@ def create_month_grid(
     )
 
     _build_grid()
-    return container, refresh
+    return container, render

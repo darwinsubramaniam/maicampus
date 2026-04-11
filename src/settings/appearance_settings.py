@@ -22,7 +22,7 @@ def create_appearance_settings(page: ft.Page) -> ft.Container:
     )
 
     def on_theme_select(e):
-        page.theme_mode = theme_modes[theme_dropdown.value]
+        page.theme_mode = theme_modes[theme_dropdown.value or "System"]
         page.update()
 
     theme_dropdown.on_select = on_theme_select

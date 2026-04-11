@@ -1,6 +1,12 @@
-from datetime import datetime, timezone
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import flet as ft
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from campus_calendar.event_model import EVENT_COLORS, EventType, event_type_from_str
 
@@ -8,7 +14,7 @@ _DAY_ABBRS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
 _DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
-def show_event_dialog(page: ft.Page, on_save: callable, event: dict | None = None):
+def show_event_dialog(page: ft.Page, on_save: Callable, event: dict | None = None):
     """Show add/edit event dialog. on_save(data: dict) called with form data."""
     is_edit = event is not None
 
@@ -29,7 +35,7 @@ def show_event_dialog(page: ft.Page, on_save: callable, event: dict | None = Non
     # Date display
     selected_date = {"value": None}
     if event:
-        selected_date["value"] = datetime.fromisoformat(event["start_datetime"]).date()
+        selected_date["value"] = datetime.fromisoformat(event["start_datetime"]).date()  # type: ignore[arg-type]
     date_text = ft.Text(
         selected_date["value"].strftime("%b %d, %Y") if selected_date["value"] else "Select date",
         color=ft.Colors.ON_SURFACE,
@@ -81,7 +87,7 @@ def show_event_dialog(page: ft.Page, on_save: callable, event: dict | None = Non
     )
 
     day_chips = []
-    for abbr, label in zip(_DAY_ABBRS, _DAY_LABELS):
+    for abbr, label in zip(_DAY_ABBRS, _DAY_LABELS, strict=True):
         chip = ft.Chip(
             label=ft.Text(label),
             selected=abbr in rec_days,
@@ -97,7 +103,7 @@ def show_event_dialog(page: ft.Page, on_save: callable, event: dict | None = Non
     )
 
     def toggle_rec(e):
-        day_row.visible = rec_enabled.value
+        day_row.visible = rec_enabled.value  # type: ignore[assignment]
         page.update()
 
     rec_enabled.on_change = toggle_rec
@@ -114,7 +120,10 @@ def show_event_dialog(page: ft.Page, on_save: callable, event: dict | None = Non
 
     # Color picker
     current_type = event_type_from_str(event.get("type", "custom")) if event else EventType.CUSTOM
-    selected_color = {"value": (event.get("color") if event else None) or EVENT_COLORS.get(current_type, EVENT_COLORS[EventType.CUSTOM])}
+    selected_color = {
+        "value": (event.get("color") if event else None)
+        or EVENT_COLORS.get(current_type, EVENT_COLORS[EventType.CUSTOM])
+    }
 
     color_swatches = []
     for et in EventType:
@@ -132,7 +141,7 @@ def show_event_dialog(page: ft.Page, on_save: callable, event: dict | None = Non
 
     def _select_color(color):
         selected_color["value"] = color
-        for swatch, et in zip(color_swatches, EventType):
+        for swatch, et in zip(color_swatches, EventType, strict=True):
             c = EVENT_COLORS[et]
             swatch.border = ft.Border.all(3, ft.Colors.ON_SURFACE if c == color else ft.Colors.TRANSPARENT)
         page.update()
@@ -140,7 +149,7 @@ def show_event_dialog(page: ft.Page, on_save: callable, event: dict | None = Non
     error_text = ft.Text("", color=ft.Colors.ERROR, visible=False)
 
     def on_type_change(e):
-        et = event_type_from_str(type_dropdown.value)
+        et = event_type_from_str(type_dropdown.value or "")
         _select_color(EVENT_COLORS.get(et, EVENT_COLORS[EventType.CUSTOM]))
 
     type_dropdown.on_select = on_type_change
@@ -164,14 +173,14 @@ def show_event_dialog(page: ft.Page, on_save: callable, event: dict | None = Non
         try:
             sh, sm = map(int, start_time.value.strip().split(":"))
             eh, em = map(int, end_time.value.strip().split(":"))
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             error_text.value = "Invalid time format. Use HH:MM."
             error_text.visible = True
             page.update()
             return
 
-        start_dt = datetime(d.year, d.month, d.day, sh, sm, tzinfo=timezone.utc)
-        end_dt = datetime(d.year, d.month, d.day, eh, em, tzinfo=timezone.utc)
+        start_dt = datetime(d.year, d.month, d.day, sh, sm, tzinfo=UTC)
+        end_dt = datetime(d.year, d.month, d.day, eh, em, tzinfo=UTC)
 
         # Build recurrence rule
         rec = None
@@ -190,7 +199,7 @@ def show_event_dialog(page: ft.Page, on_save: callable, event: dict | None = Non
             "color": selected_color["value"],
         }
 
-        if is_edit:
+        if is_edit and event is not None:
             data["id"] = event["id"]
 
         if date_picker in page.overlay:

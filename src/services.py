@@ -1,9 +1,15 @@
 """Shared service instances — single source of truth for stores and getters."""
 
-from typing import Callable
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from campus_calendar.event_store import CalendarEventStore
-from memory import MemoryManager
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from memory import MemoryManager
 
 # Shared instances
 calendar_store = CalendarEventStore()

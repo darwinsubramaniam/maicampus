@@ -1,7 +1,14 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import flet as ft
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-def create_input_bar(on_send: callable) -> tuple[ft.Container, ft.TextField]:
+
+def create_input_bar(on_send: Callable) -> tuple[ft.Container, ft.TextField]:
     """Returns (input_bar_container, text_field_reference)."""
     message_input = ft.TextField(
         hint_text="Message MAI...",

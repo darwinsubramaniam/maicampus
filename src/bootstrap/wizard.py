@@ -1,7 +1,14 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import flet as ft
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-def create_wizard(page: ft.Page, step_defs: list[dict], on_finish: callable) -> ft.Container:
+
+def create_wizard(page: ft.Page, step_defs: list[dict], on_finish: Callable) -> ft.Container:
     """
     Generic step-by-step wizard.
 
@@ -32,7 +39,7 @@ def create_wizard(page: ft.Page, step_defs: list[dict], on_finish: callable) -> 
         step_body.content = step["content"]
         step_indicator.value = f"Step {current_step['index'] + 1} of {len(step_defs)}"
         back_btn.visible = current_step["index"] > 0
-        next_btn.text = step["next_label"]
+        next_btn.text = step["next_label"]  # type: ignore[assignment]
         on_enter = step.get("on_enter")
         if on_enter:
             on_enter()
@@ -49,9 +56,8 @@ def create_wizard(page: ft.Page, step_defs: list[dict], on_finish: callable) -> 
 
         # Run validation if defined
         validate = step.get("validate")
-        if validate:
-            if not await validate(page):
-                return
+        if validate and not await validate(page):
+            return
 
         # Last step — finish
         if idx == len(step_defs) - 1:

@@ -37,17 +37,17 @@ def _to_gemini(tool: ToolDefinition) -> list:
         props = {}
         for name, prop in schema.get("properties", {}).items():
             props[name] = types.Schema(
-                type=type_map.get(prop.get("type", "string"), "STRING"),
+                type=type_map.get(prop.get("type", "string"), "STRING"),  # type: ignore[arg-type]
                 description=prop.get("description", ""),
                 enum=prop.get("enum"),
             )
         return types.Schema(
-            type="OBJECT",
+            type="OBJECT",  # type: ignore[arg-type]
             properties=props,
             required=schema.get("required", []),
         )
 
-    return types.FunctionDeclaration(
+    return types.FunctionDeclaration(  # type: ignore[return-value]
         name=tool.name,
         description=tool.description,
         parameters=_schema_from_json(tool.parameters),
@@ -66,6 +66,7 @@ def get_tools_for_provider(provider: Provider) -> list | None:
         return [_to_claude(t) for t in tools]
     elif provider == Provider.GEMINI:
         from google.genai import types
+
         declarations = [_to_gemini(t) for t in tools]
-        return [types.Tool(function_declarations=declarations)]
+        return [types.Tool(function_declarations=declarations)]  # type: ignore[arg-type]
     return None

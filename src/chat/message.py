@@ -1,7 +1,9 @@
+from typing import cast
+
 import flet as ft
 
 
-def _icon_avatar(icon: str, bgcolor: str) -> ft.CircleAvatar:
+def _icon_avatar(icon: ft.IconData, bgcolor: str) -> ft.CircleAvatar:
     return ft.CircleAvatar(
         content=ft.Icon(icon, color=ft.Colors.WHITE, size=16),
         bgcolor=bgcolor,
@@ -30,8 +32,10 @@ class ChatMessage(ft.Row):
         is_loading: bool = False,
     ):
         text_color = (
-            ft.Colors.ON_ERROR_CONTAINER if is_error
-            else ft.Colors.ON_PRIMARY_CONTAINER if is_user
+            ft.Colors.ON_ERROR_CONTAINER
+            if is_error
+            else ft.Colors.ON_PRIMARY_CONTAINER
+            if is_user
             else ft.Colors.ON_SURFACE
         )
 
@@ -57,8 +61,10 @@ class ChatMessage(ft.Row):
         )
 
         author_color = (
-            ft.Colors.ON_ERROR_CONTAINER if is_error
-            else ft.Colors.ON_PRIMARY_CONTAINER if is_user
+            ft.Colors.ON_ERROR_CONTAINER
+            if is_error
+            else ft.Colors.ON_PRIMARY_CONTAINER
+            if is_user
             else ft.Colors.TEAL_700
         )
 
@@ -78,8 +84,10 @@ class ChatMessage(ft.Row):
                 spacing=4,
             ),
             bgcolor=(
-                ft.Colors.ERROR_CONTAINER if is_error
-                else ft.Colors.PRIMARY_CONTAINER if is_user
+                ft.Colors.ERROR_CONTAINER
+                if is_error
+                else ft.Colors.PRIMARY_CONTAINER
+                if is_user
                 else ft.Colors.SURFACE_CONTAINER_HIGHEST
             ),
             border_radius=ft.BorderRadius(
@@ -102,9 +110,7 @@ class ChatMessage(ft.Row):
         else:
             _avatar = _ai_avatar()
 
-        controls = (
-            [self._bubble, _avatar] if is_user else [_avatar, self._bubble]
-        )
+        controls = [self._bubble, _avatar] if is_user else [_avatar, self._bubble]
 
         super().__init__(
             alignment=ft.MainAxisAlignment.END if is_user else ft.MainAxisAlignment.START,
@@ -124,7 +130,10 @@ class ChatMessage(ft.Row):
         self.body_text.value = message
         self.body_text.color = ft.Colors.ON_ERROR_CONTAINER
         self._bubble.bgcolor = ft.Colors.ERROR_CONTAINER
-        self._bubble.content.controls[0] = ft.Text(
-            "Error", weight=ft.FontWeight.W_600, size=11, color=ft.Colors.ON_ERROR_CONTAINER,
+        cast("ft.Column", self._bubble.content).controls[0] = ft.Text(
+            "Error",
+            weight=ft.FontWeight.W_600,
+            size=11,
+            color=ft.Colors.ON_ERROR_CONTAINER,
         )
         self.controls[0] = _icon_avatar(ft.Icons.ERROR_OUTLINE, ft.Colors.ERROR)

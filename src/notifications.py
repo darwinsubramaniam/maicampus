@@ -1,4 +1,10 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import flet as ft
 
@@ -19,7 +25,9 @@ class NotificationCenter:
         )
 
         self._badge = ft.Container(
-            content=ft.Text("0", size=9, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.CENTER),
+            content=ft.Text(
+                "0", size=9, color=ft.Colors.WHITE, weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.CENTER
+            ),
             width=16,
             height=16,
             border_radius=8,
@@ -35,7 +43,9 @@ class NotificationCenter:
                     ft.Container(
                         content=ft.Row(
                             controls=[
-                                ft.Text("Notifications", size=14, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE),
+                                ft.Text(
+                                    "Notifications", size=14, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE
+                                ),
                                 ft.Container(expand=True),
                                 ft.TextButton("Clear", on_click=self._clear_all),
                             ],
@@ -51,7 +61,8 @@ class NotificationCenter:
             border_radius=12,
             border=ft.Border.all(1, ft.Colors.with_opacity(0.15, ft.Colors.ON_SURFACE)),
             shadow=ft.BoxShadow(
-                spread_radius=0, blur_radius=12,
+                spread_radius=0,
+                blur_radius=12,
                 color=ft.Colors.with_opacity(0.15, ft.Colors.BLACK),
                 offset=ft.Offset(0, 4),
             ),
@@ -81,17 +92,26 @@ class NotificationCenter:
     def panel(self) -> ft.Container:
         return self._panel
 
-    def add(self, message: str, icon: str = ft.Icons.INFO_OUTLINE, color: str = ft.Colors.TEAL, on_click: callable = None):
+    def add(
+        self,
+        message: str,
+        icon: ft.IconData = ft.Icons.INFO_OUTLINE,
+        color: str = ft.Colors.TEAL,
+        on_click: Callable | None = None,
+    ):
         """Add a notification. on_click is called when the notification tile is tapped."""
-        self._items.insert(0, {
-            "message": message,
-            "time": datetime.now(),
-            "icon": icon,
-            "color": color,
-            "on_click": on_click,
-        })
+        self._items.insert(
+            0,
+            {
+                "message": message,
+                "time": datetime.now(),
+                "icon": icon,
+                "color": color,
+                "on_click": on_click,
+            },
+        )
         self._badge_count += 1
-        self._badge.content.value = str(self._badge_count)
+        cast("ft.Text", self._badge.content).value = str(self._badge_count)
         self._badge.visible = True
         self._refresh_list()
         self._page.update()
@@ -104,12 +124,15 @@ class NotificationCenter:
         for item in self._items:
             time_str = item["time"].strftime("%I:%M %p").lstrip("0")
             raw_click = item.get("on_click")
+
             def _make_click(fn):
                 def _handler(e):
                     self._panel.visible = False
                     self._page.update()
                     fn(e)
+
                 return _handler
+
             click_fn = _make_click(raw_click) if raw_click else None
             tile = ft.Container(
                 content=ft.Row(
@@ -131,7 +154,7 @@ class NotificationCenter:
                 border_radius=8,
                 bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
                 on_click=click_fn,
-                ink=True if click_fn else False,
+                ink=bool(click_fn),
             )
             self._list.controls.append(tile)
 

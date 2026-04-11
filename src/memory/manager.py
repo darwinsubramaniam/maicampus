@@ -80,12 +80,16 @@ class MemoryManager:
         ]
         with self._lock:
             self._ensure_initialized()
+            if not self._memory:
+                return
             self._memory.add(messages, user_id=user_id)
 
     def search_relevant(self, query: str, user_id: str = "default_student", top_k: int = 5) -> list[str]:
         """Semantic search for relevant memories."""
         with self._lock:
             self._ensure_initialized()
+            if not self._memory:
+                return []
             results = self._memory.search(query, user_id=user_id, limit=top_k)
         return [r["memory"] for r in results.get("results", [])]
 
@@ -93,4 +97,6 @@ class MemoryManager:
         """Retrieve all memories for a student."""
         with self._lock:
             self._ensure_initialized()
-            return self._memory.get_all(user_id=user_id)
+            if not self._memory:
+                return []
+            return self._memory.get_all(user_id=user_id)  # type: ignore[return-value]

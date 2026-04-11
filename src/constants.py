@@ -1,6 +1,6 @@
 """Shared constants and utility functions for MAI Campus."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import flet as ft
@@ -18,7 +18,7 @@ def relative_time(iso_str: str) -> str:
     """Format an ISO timestamp as a relative time string."""
     try:
         dt = datetime.fromisoformat(iso_str)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         delta = now - dt
         if delta.days == 0:
             return "Today"
@@ -28,7 +28,7 @@ def relative_time(iso_str: str) -> str:
             return f"{delta.days} days ago"
         else:
             return dt.strftime("%b %d")
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return ""
 
 

@@ -1,19 +1,26 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import flet as ft
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from constants import relative_time as _relative_time
 
 
 def create_sidebar(
-    on_new_chat: callable,
-    on_select_session: callable,
-    on_delete_session: callable,
-    get_sessions: callable,
-    active_session_id: callable,
-) -> tuple[ft.Container, callable]:
+    on_new_chat: Callable,
+    on_select_session: Callable,
+    on_delete_session: Callable,
+    get_sessions: Callable,
+    active_session_id: Callable,
+) -> tuple[ft.Container, Callable]:
 
     session_list = ft.ListView(expand=True, spacing=2, padding=ft.Padding(left=8, right=8, top=4, bottom=8))
 
-    def refresh():
+    def render():
         sessions = get_sessions()
         current_id = active_session_id()
         session_list.controls.clear()
@@ -105,5 +112,5 @@ def create_sidebar(
         ),
     )
 
-    refresh()
-    return sidebar, refresh
+    render()
+    return sidebar, render

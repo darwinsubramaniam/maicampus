@@ -9,10 +9,17 @@ To reorder: change the list order below.
 To remove: delete or comment out the entry.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from bootstrap.steps import ai_provider, done, profile, welcome
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-def build_pipeline(on_config_ready: callable) -> list[dict]:
+
+def build_pipeline(on_config_ready: Callable) -> list[dict]:
     """Build the ordered list of bootstrap steps."""
     return [
         welcome.step(),

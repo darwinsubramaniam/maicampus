@@ -1,7 +1,14 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import flet as ft
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-def create_planner_settings(page: ft.Page, on_scan: callable = None) -> ft.Container:
+
+def create_planner_settings(page: ft.Page, on_scan: Callable | None = None) -> ft.Container:
     status_text = ft.Text("", color=ft.Colors.ON_SURFACE_VARIANT)
     scan_btn_text = ft.Text("Run Scan Now", color=ft.Colors.WHITE)
 
@@ -19,7 +26,7 @@ def create_planner_settings(page: ft.Page, on_scan: callable = None) -> ft.Conta
 
         def _run():
             try:
-                on_scan()
+                on_scan()  # type: ignore[misc]
                 scan_btn_text.value = "Run Scan Now"
                 status_text.value = "Scan complete! Check notifications for alerts."
                 status_text.color = ft.Colors.TEAL
@@ -55,9 +62,15 @@ def create_planner_settings(page: ft.Page, on_scan: callable = None) -> ft.Conta
                 ft.Column(
                     controls=[
                         ft.Text("What the scan does:", size=12, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE),
-                        ft.Text("  - Checks upcoming assignments & exams (next 14 days)", size=12, color=ft.Colors.ON_SURFACE),
+                        ft.Text(
+                            "  - Checks upcoming assignments & exams (next 14 days)",
+                            size=12,
+                            color=ft.Colors.ON_SURFACE,
+                        ),
                         ft.Text("  - Marks overdue tasks automatically", size=12, color=ft.Colors.ON_SURFACE),
-                        ft.Text("  - Creates check-in notifications for pending tasks", size=12, color=ft.Colors.ON_SURFACE),
+                        ft.Text(
+                            "  - Creates check-in notifications for pending tasks", size=12, color=ft.Colors.ON_SURFACE
+                        ),
                         ft.Text("  - Learns from your completion patterns", size=12, color=ft.Colors.ON_SURFACE),
                     ],
                     spacing=4,

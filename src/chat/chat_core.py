@@ -1,16 +1,22 @@
 """Shared chat engine — used by both the full chat view and floating chat widget."""
 
+from __future__ import annotations
+
 import asyncio
+import contextlib
 import json
 import threading
 from datetime import date
+from typing import TYPE_CHECKING
 
 import flet as ft
 
-from ai_providers import Provider, ProviderConfig, StreamItem, TextChunk, ToolCall, stream_response
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+from ai_providers import Provider, TextChunk, ToolCall, stream_response
 from chat.input_bar import create_input_bar
 from chat.message import ChatMessage
-from memory import MemoryManager
 from tools import execute as execute_tool
 from tools.converters import get_tools_for_provider
 
@@ -21,11 +27,11 @@ class ChatEngine:
     def __init__(
         self,
         page: ft.Page,
-        get_config: callable,
-        get_memory_manager: callable,
-        get_calendar_context: callable = None,
-        on_tool_executed: callable = None,
-        on_response_complete: callable = None,
+        get_config: Callable,
+        get_memory_manager: Callable,
+        get_calendar_context: Callable | None = None,
+        on_tool_executed: Callable | None = None,
+        on_response_complete: Callable | None = None,
         user_name: str = "You",
         user_pic: str = "",
     ):
@@ -75,10 +81,7 @@ class ChatEngine:
         )
 
         # Detect if this is a progress check-in session (MAI initiated)
-        is_checkin = (
-            len(self.conversation) >= 1
-            and self.conversation[0].get("role") == "assistant"
-        )
+        is_checkin = len(self.conversation) >= 1 and self.conversation[0].get("role") == "assistant"
         if is_checkin:
             ctx = self.checkin_context or {}
             task_title = ctx.get("task_title", "their task")
@@ -87,10 +90,12 @@ class ChatEngine:
 
             base_prompt += (
                 "\n\nIMPORTANT: This is a PROGRESS CHECK-IN session that YOU (MAI) initiated.\n"
-                f"You are checking on: \"{task_title}\"\n"
+                f'You are checking on: "{task_title}"\n'
             )
             if event_id:
-                base_prompt += f"Event ID: {event_id} (use this when calling update_task_status or log_task_completion)\n"
+                base_prompt += (
+                    f"Event ID: {event_id} (use this when calling update_task_status or log_task_completion)\n"
+                )
             if due_date:
                 base_prompt += f"Due date: {due_date}\n"
             base_prompt += (
@@ -128,24 +133,38 @@ class ChatEngine:
 
         return base_prompt
 
-    def _append_tool_turn(self, provider: Provider, messages: list[dict], tool_calls: list[ToolCall], results: list[dict]):
+    def _append_tool_turn(
+        self, provider: Provider, messages: list[dict], tool_calls: list[ToolCall], results: list[dict]
+    ):
         if provider == Provider.OPENAI:
-            openai_tool_calls = [{
-                "id": tc.call_id, "type": "function",
-                "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
-            } for tc in tool_calls]
+            openai_tool_calls = [
+                {
+                    "id": tc.call_id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                }
+                for tc in tool_calls
+            ]
             messages.append({"role": "assistant", "tool_calls": openai_tool_calls, "content": None})
-            for tc, result in zip(tool_calls, results):
+            for tc, result in zip(tool_calls, results, strict=True):
                 messages.append({"role": "tool", "tool_call_id": tc.call_id, "content": json.dumps(result)})
         elif provider == Provider.CLAUDE:
-            content_blocks = [{"type": "tool_use", "id": tc.call_id, "name": tc.name, "input": tc.arguments} for tc in tool_calls]
+            content_blocks = [
+                {"type": "tool_use", "id": tc.call_id, "name": tc.name, "input": tc.arguments} for tc in tool_calls
+            ]
             messages.append({"role": "assistant", "content": content_blocks})
-            tool_results = [{"type": "tool_result", "tool_use_id": tc.call_id, "content": json.dumps(result)} for tc, result in zip(tool_calls, results)]
+            tool_results = [
+                {"type": "tool_result", "tool_use_id": tc.call_id, "content": json.dumps(result)}
+                for tc, result in zip(tool_calls, results, strict=True)
+            ]
             messages.append({"role": "user", "content": tool_results})
         elif provider == Provider.GEMINI:
             fc_parts = [{"function_call": {"name": tc.name, "args": tc.arguments}} for tc in tool_calls]
             messages.append({"role": "assistant", "content": fc_parts})
-            fr_parts = [{"function_response": {"name": tc.name, "response": result}} for tc, result in zip(tool_calls, results)]
+            fr_parts = [
+                {"function_response": {"name": tc.name, "response": result}}
+                for tc, result in zip(tool_calls, results, strict=True)
+            ]
             messages.append({"role": "user", "content": fr_parts})
 
     def _send_message(self, e):
@@ -158,9 +177,7 @@ class ChatEngine:
             return
 
         self.conversation.append({"role": "user", "content": text})
-        self.chat_list.controls.append(
-            ChatMessage(self.user_name, text, is_user=True, user_pic=self.user_pic)
-        )
+        self.chat_list.controls.append(ChatMessage(self.user_name, text, is_user=True, user_pic=self.user_pic))
         self.message_input.value = ""
 
         ai_msg = ChatMessage("MAI", "", is_loading=True)
@@ -172,7 +189,7 @@ class ChatEngine:
             streaming_started = False
             try:
                 system_prompt = self._build_system_prompt(text)
-                messages_to_send = [{"role": "system", "content": system_prompt}] + list(self.conversation)
+                messages_to_send = [{"role": "system", "content": system_prompt}, *self.conversation]
                 provider_tools = get_tools_for_provider(config.provider)
 
                 max_tool_rounds = 5
@@ -183,13 +200,13 @@ class ChatEngine:
                     loop = asyncio.get_event_loop()
                     queue: asyncio.Queue = asyncio.Queue()
 
-                    def _produce(msgs=messages_to_send, tls=provider_tools):
+                    def _produce(msgs=messages_to_send, tls=provider_tools, _loop=loop, _queue=queue):
                         try:
                             for item in stream_response(config, msgs, tools=tls):
-                                loop.call_soon_threadsafe(queue.put_nowait, item)
-                            loop.call_soon_threadsafe(queue.put_nowait, None)
+                                _loop.call_soon_threadsafe(_queue.put_nowait, item)
+                            _loop.call_soon_threadsafe(_queue.put_nowait, None)
                         except Exception as ex:
-                            loop.call_soon_threadsafe(queue.put_nowait, ex)
+                            _loop.call_soon_threadsafe(_queue.put_nowait, ex)
 
                     threading.Thread(target=_produce, daemon=True).start()
 
@@ -227,11 +244,13 @@ class ChatEngine:
                         streaming_started = True
 
                 assistant_response = "".join(collected)
-                self.conversation.append({
-                    "role": "assistant",
-                    "content": assistant_response,
-                    "provider": config.provider.value,
-                })
+                self.conversation.append(
+                    {
+                        "role": "assistant",
+                        "content": assistant_response,
+                        "provider": config.provider.value,
+                    }
+                )
                 self.page.update()
 
                 if self.on_response_complete:
@@ -239,15 +258,16 @@ class ChatEngine:
 
                 mgr = self.get_memory_manager()
                 if mgr:
+
                     def _store():
-                        try:
+                        with contextlib.suppress(Exception):
                             mgr.add_turn(text, assistant_response)
-                        except Exception:
-                            pass
+
                     threading.Thread(target=_store, daemon=True).start()
 
             except Exception as ex:
                 import traceback
+
                 traceback.print_exc()
                 ai_msg.set_error(str(ex))
                 self.page.update()

@@ -1,12 +1,20 @@
-import flet as ft
+from __future__ import annotations
 
-from ai_providers import ProviderConfig
+from typing import TYPE_CHECKING
+
 from bootstrap.pipeline import build_pipeline
 from bootstrap.wizard import create_wizard
 from constants import BOOTSTRAP_FLAG
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-def is_bootstrapped(page: ft.Page = None) -> bool:
+    import flet as ft
+
+    from ai_providers import ProviderConfig
+
+
+def is_bootstrapped(page: ft.Page | None = None) -> bool:
     return BOOTSTRAP_FLAG.exists()
 
 
@@ -15,7 +23,7 @@ def _mark_bootstrapped():
     BOOTSTRAP_FLAG.touch()
 
 
-def create_bootstrap_view(page: ft.Page, on_complete: callable) -> ft.Container:
+def create_bootstrap_view(page: ft.Page, on_complete: Callable) -> ft.Container:
     """Create the onboarding wizard. on_complete(config) called when finished."""
     saved_config: dict = {"config": None}
 

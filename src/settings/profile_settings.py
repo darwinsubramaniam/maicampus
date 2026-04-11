@@ -7,9 +7,10 @@ from constants import PROFILE_CACHE_PATH, make_avatar
 _KEY_PREFIX = "maicampus.profile."
 
 
-async def load_profile(page: ft.Page = None) -> dict:
+async def load_profile(page: ft.Page | None = None) -> dict:
     """Load saved profile from client storage."""
     from prefs import get_prefs
+
     prefs = get_prefs()
     name = await prefs.get(f"{_KEY_PREFIX}name") or ""
     email = await prefs.get(f"{_KEY_PREFIX}email") or ""
@@ -17,9 +18,10 @@ async def load_profile(page: ft.Page = None) -> dict:
     return {"name": name, "email": email, "pic_path": pic_path}
 
 
-async def save_profile(page: ft.Page = None, name: str = "", email: str = "", pic_path: str = ""):
+async def save_profile(page: ft.Page | None = None, name: str = "", email: str = "", pic_path: str = ""):
     """Persist profile to client storage."""
     from prefs import get_prefs
+
     prefs = get_prefs()
     await prefs.set(f"{_KEY_PREFIX}name", name)
     await prefs.set(f"{_KEY_PREFIX}email", email)
@@ -45,7 +47,7 @@ def create_profile_settings(page: ft.Page) -> ft.Container:
             allowed_extensions=["png", "jpg", "jpeg", "webp"],
             dialog_title="Choose profile picture",
         )
-        if files:
+        if files and files[0].path:
             pic_path_state["path"] = files[0].path
             pic_container.content = make_avatar(files[0].path)
             page.update()

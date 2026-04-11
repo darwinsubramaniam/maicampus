@@ -1,6 +1,13 @@
 """Floating chat bubble + popup window for non-chat pages."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import flet as ft
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from chat.chat_core import ChatEngine
 from chat.session_store import SessionStore
@@ -9,11 +16,11 @@ from constants import relative_time as _relative_time
 
 def create_floating_chat(
     page: ft.Page,
-    get_config: callable,
-    get_memory_manager: callable,
-    get_calendar_context: callable = None,
-    on_tool_executed: callable = None,
-    session_store: SessionStore = None,
+    get_config: Callable,
+    get_memory_manager: Callable,
+    get_calendar_context: Callable | None = None,
+    on_tool_executed: Callable | None = None,
+    session_store: SessionStore | None = None,
 ) -> ft.Stack:
     store = session_store or SessionStore()
 
@@ -27,6 +34,7 @@ def create_floating_chat(
 
     async def _load_profile():
         from settings.profile_settings import load_profile
+
         try:
             p = await load_profile()
             engine.user_name = p.get("name") or "You"
@@ -57,6 +65,7 @@ def create_floating_chat(
 
     engine._send_message = _send_with_session
     from chat.input_bar import create_input_bar
+
     engine.input_bar, engine.message_input = create_input_bar(_send_with_session)
 
     # History panel
@@ -203,7 +212,8 @@ def create_floating_chat(
         bgcolor=ft.Colors.SURFACE,
         border=ft.Border.all(1, ft.Colors.with_opacity(0.15, ft.Colors.ON_SURFACE)),
         shadow=ft.BoxShadow(
-            spread_radius=0, blur_radius=16,
+            spread_radius=0,
+            blur_radius=16,
             color=ft.Colors.with_opacity(0.2, ft.Colors.BLACK),
             offset=ft.Offset(0, 4),
         ),

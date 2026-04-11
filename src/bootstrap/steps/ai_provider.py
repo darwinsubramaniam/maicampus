@@ -1,10 +1,17 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import flet as ft
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from ai_providers import DEFAULT_MODELS, Provider, ProviderConfig
 from settings.ai_settings import save_config
 
 
-def step(on_config_ready: callable) -> dict:
+def step(on_config_ready: Callable) -> dict:
     provider_dropdown = ft.Dropdown(
         label="AI Provider",
         options=[ft.DropdownOption(key=p.name, text=p.value) for p in Provider],
@@ -28,7 +35,7 @@ def step(on_config_ready: callable) -> dict:
     error_text = ft.Text("", color=ft.Colors.RED, visible=False)
 
     def _on_provider_change(e):
-        provider = Provider[provider_dropdown.value]
+        provider = Provider[str(provider_dropdown.value)]
         model_field.hint_text = DEFAULT_MODELS[provider]
 
     provider_dropdown.on_select = _on_provider_change
@@ -54,7 +61,7 @@ def step(on_config_ready: callable) -> dict:
             return False
         error_text.visible = False
 
-        provider = Provider[provider_dropdown.value]
+        provider = Provider[str(provider_dropdown.value)]
         config = ProviderConfig(
             provider=provider,
             api_key=api_key_field.value.strip(),

@@ -1,11 +1,17 @@
+from __future__ import annotations
+
 import shutil
+from typing import TYPE_CHECKING
 
 import flet as ft
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from constants import APP_DIR
 
 
-def create_reset_settings(page: ft.Page, on_reset: callable) -> ft.Container:
+def create_reset_settings(page: ft.Page, on_reset: Callable) -> ft.Container:
     confirm_field = ft.TextField(
         label='Type "confirm" to reset',
         width=300,
@@ -22,6 +28,7 @@ def create_reset_settings(page: ft.Page, on_reset: callable) -> ft.Container:
 
         # Clear all client storage
         from prefs import get_prefs
+
         await get_prefs().clear()
 
         # Delete all local data (ChromaDB + chat history)

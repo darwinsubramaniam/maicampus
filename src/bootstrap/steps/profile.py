@@ -20,7 +20,7 @@ def step() -> dict:
             allowed_extensions=["png", "jpg", "jpeg", "webp"],
             dialog_title="Choose profile picture",
         )
-        if files:
+        if files and files[0].path:
             pic_path_state["path"] = files[0].path
             pic_container.content = make_avatar(files[0].path)
             e.page.update()

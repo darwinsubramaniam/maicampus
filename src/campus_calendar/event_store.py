@@ -1,6 +1,6 @@
 import threading
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from tinydb import Query, TinyDB
 
@@ -18,7 +18,7 @@ class CalendarEventStore:
         self._q = Query()
 
     def create_event(self, data: dict) -> dict:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         event = {
             "id": str(uuid.uuid4()),
             "title": data.get("title", ""),
@@ -49,7 +49,7 @@ class CalendarEventStore:
 
     def get_all_events(self) -> list[dict]:
         with self._lock:
-            return self._db.all()
+            return self._db.all()  # type: ignore[return-value]
 
     def get_events_for_date(self, target: date) -> list[dict]:
         """Get all events (including recurring) that occur on a specific date."""
@@ -85,7 +85,7 @@ class CalendarEventStore:
         return result
 
     def update_event(self, event_id: str, data: dict):
-        data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        data["updated_at"] = datetime.now(UTC).isoformat()
         with self._lock:
             self._db.update(data, self._q.id == event_id)
 
@@ -93,9 +93,7 @@ class CalendarEventStore:
         """Get upcoming assignments/exams that need attention."""
         upcoming = self.get_upcoming_events(days=days)
         return [
-            (d, e) for d, e in upcoming
-            if e.get("type") in ("assignment", "exam")
-            and e.get("status") != "completed"
+            (d, e) for d, e in upcoming if e.get("type") in ("assignment", "exam") and e.get("status") != "completed"
         ]
 
     def delete_event(self, event_id: str):

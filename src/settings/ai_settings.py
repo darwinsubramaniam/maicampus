@@ -1,13 +1,21 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import flet as ft
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from ai_providers import DEFAULT_MODELS, Provider, ProviderConfig
 
 _KEY_PREFIX = "maicampus.ai."
 
 
-async def load_config(page: ft.Page = None) -> ProviderConfig | None:
+async def load_config(page: ft.Page | None = None) -> ProviderConfig | None:
     """Load saved AI config from client storage."""
     from prefs import get_prefs
+
     prefs = get_prefs()
     provider_name = await prefs.get(f"{_KEY_PREFIX}provider")
     api_key = await prefs.get(f"{_KEY_PREFIX}api_key")
@@ -15,15 +23,18 @@ async def load_config(page: ft.Page = None) -> ProviderConfig | None:
         return None
     model = await prefs.get(f"{_KEY_PREFIX}model")
     return ProviderConfig(
-        provider=Provider[provider_name],
-        api_key=api_key,
-        model=model or None,
+        provider=Provider[str(provider_name)],
+        api_key=str(api_key),
+        model=str(model) if model else None,
     )
 
 
-async def save_config(page: ft.Page = None, config: ProviderConfig = None):
+async def save_config(page: ft.Page | None = None, config: ProviderConfig | None = None):
     """Persist AI config to client storage."""
+    if not config:
+        return
     from prefs import get_prefs
+
     prefs = get_prefs()
     await prefs.set(f"{_KEY_PREFIX}provider", config.provider.name)
     await prefs.set(f"{_KEY_PREFIX}api_key", config.api_key)
@@ -33,7 +44,7 @@ async def save_config(page: ft.Page = None, config: ProviderConfig = None):
         await prefs.remove(f"{_KEY_PREFIX}model")
 
 
-def create_ai_settings(page: ft.Page, on_save: callable) -> ft.Container:
+def create_ai_settings(page: ft.Page, on_save: Callable) -> ft.Container:
     provider_dropdown = ft.Dropdown(
         label="AI Provider",
         options=[ft.DropdownOption(key=p.name, text=p.value) for p in Provider],
@@ -58,7 +69,7 @@ def create_ai_settings(page: ft.Page, on_save: callable) -> ft.Container:
     status_text = ft.Text("", color=ft.Colors.GREEN)
 
     def _update_model_hint():
-        provider = Provider[provider_dropdown.value]
+        provider = Provider[str(provider_dropdown.value)]
         model_field.hint_text = DEFAULT_MODELS[provider]
         page.update()
 
@@ -69,7 +80,7 @@ def create_ai_settings(page: ft.Page, on_save: callable) -> ft.Container:
             page.update()
             return
 
-        provider = Provider[provider_dropdown.value]
+        provider = Provider[str(provider_dropdown.value)]
         config = ProviderConfig(
             provider=provider,
             api_key=api_key_field.value.strip(),

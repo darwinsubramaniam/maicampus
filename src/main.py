@@ -1,23 +1,25 @@
+from __future__ import annotations
+
 import threading
+from typing import TYPE_CHECKING
 
 import flet as ft
 
-from constants import BOOTSTRAP_FLAG
+import services
 
-from ai_providers import ProviderConfig
-from bootstrap import create_bootstrap_view, is_bootstrapped
+if TYPE_CHECKING:
+    from ai_providers import ProviderConfig
+from bootstrap import create_bootstrap_view
 from campus_calendar import create_calendar_view, get_calendar_context
 from chat import create_chat_view
+from constants import BOOTSTRAP_FLAG
 from memory import MemoryManager
 from notifications import NotificationCenter
 from planner import SmartPlannerTask
-import services
 from settings import create_settings_view
 from theme import apply_theme
-
-# Import to trigger tool registration
-import tools.calendar_tools
-import tools.planner_tools
+from tools import calendar_tools as _calendar_tools  # noqa: F401  # side-effect: registers tools
+from tools import planner_tools as _planner_tools  # noqa: F401  # side-effect: registers tools
 
 
 def main(page: ft.Page):
@@ -69,9 +71,16 @@ def main(page: ft.Page):
                     color=ft.Colors.TEAL,
                 )
 
-        chat_view = create_chat_view(page, get_config, get_memory_manager, get_calendar_context=get_cal_context, notifications=notif_center)
+        chat_view = create_chat_view(
+            page,
+            get_config,
+            get_memory_manager,
+            get_calendar_context=get_cal_context,
+            notifications=notif_center,
+        )
         calendar_view = create_calendar_view(
-            page, get_memory_manager,
+            page,
+            get_memory_manager,
             get_config=get_config,
             get_calendar_context_fn=get_cal_context,
             on_tool_executed=_on_tool_executed,
@@ -85,7 +94,9 @@ def main(page: ft.Page):
             open_chat_fn=lambda *a, **kw: None,  # wired after chat_view exists
         )
 
-        settings_view = create_settings_view(page, on_ai_save=on_config_save, on_reset=show_bootstrap, on_scan=planner._scan)
+        settings_view = create_settings_view(
+            page, on_ai_save=on_config_save, on_reset=show_bootstrap, on_scan=planner._scan
+        )
 
         body = ft.Container(content=chat_view, expand=True)
 
@@ -100,11 +111,17 @@ def main(page: ft.Page):
             page.update()
 
         # Chat deep-link from planner notifications
-        def open_chat_with_prompt(mai_message: str, title: str = "Task", event_id: str = None, due_date: str = None):
+        def open_chat_with_prompt(
+            mai_message: str,
+            title: str = "Task",
+            event_id: str | None = None,
+            due_date: str | None = None,
+        ):
             """Open chat with a progress check-in initiated by MAI."""
-            page.navigation_bar.selected_index = 0
+            if page.navigation_bar:
+                page.navigation_bar.selected_index = 0
             body.content = chat_view
-            chat_view.start_checkin(title, mai_message, event_id=event_id, due_date=due_date)
+            chat_view.start_checkin(title, mai_message, event_id=event_id, due_date=due_date)  # type: ignore[attr-defined]
             page.update()
 
         page.navigation_bar = ft.NavigationBar(
@@ -139,6 +156,7 @@ def main(page: ft.Page):
 
         # Check for app updates
         import webbrowser
+
         from updater import check_for_update
 
         def _on_update(version, download_url, notes, update_type):
@@ -147,7 +165,8 @@ def main(page: ft.Page):
 
             if update_type == "major":
                 notif_center.add(
-                    f"Major update {version} available. This may include breaking changes — please review release notes before updating.",
+                    f"Major update {version} available. This may include breaking changes"
+                    " — please review release notes before updating.",
                     icon=ft.Icons.WARNING_AMBER,
                     color=ft.Colors.ORANGE,
                     on_click=_open_download,

@@ -1,6 +1,9 @@
 """Main chat view — orchestrates ChatEngine with session management, sidebar, and notifications."""
 
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING
 
 import flet as ft
 
@@ -9,11 +12,15 @@ from chat.message import ChatMessage
 from chat.session_store import SessionStore
 from chat.sidebar import create_sidebar
 from constants import PROFILE_CACHE_PATH
-from notifications import NotificationCenter
 from settings.profile_settings import load_profile
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-def _build_checkin_banner(task_title: str, due_date: str = None) -> ft.Container:
+    from notifications import NotificationCenter
+
+
+def _build_checkin_banner(task_title: str, due_date: str | None = None) -> ft.Container:
     due_text = f" — Due: {due_date}" if due_date else ""
     return ft.Container(
         content=ft.Column(
@@ -25,11 +32,15 @@ def _build_checkin_banner(task_title: str, due_date: str = None) -> ft.Container
                     ],
                     spacing=6,
                 ),
-                ft.Text(f"Task: {task_title}{due_text}", size=12, color=ft.Colors.ON_SURFACE, weight=ft.FontWeight.W_500),
+                ft.Text(
+                    f"Task: {task_title}{due_text}", size=12, color=ft.Colors.ON_SURFACE, weight=ft.FontWeight.W_500
+                ),
                 ft.Text(
                     "This conversation was initiated by MAI to check on your progress. "
                     "Please keep the discussion focused on this task for best tracking.",
-                    size=11, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
+                    size=11,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                    italic=True,
                 ),
             ],
             spacing=4,
@@ -44,10 +55,10 @@ def _build_checkin_banner(task_title: str, due_date: str = None) -> ft.Container
 
 def create_chat_view(
     page: ft.Page,
-    get_config: callable,
-    get_memory_manager: callable,
-    get_calendar_context: callable = None,
-    notifications: NotificationCenter = None,
+    get_config: Callable,
+    get_memory_manager: Callable,
+    get_calendar_context: Callable | None = None,
+    notifications: NotificationCenter | None = None,
 ) -> ft.Row:
     store = SessionStore()
     profile: dict = {"name": "You", "pic_path": ""}
@@ -88,7 +99,7 @@ def create_chat_view(
         state["session"] = store.create_session()
         engine.clear()
         engine.checkin_context = None
-        sidebar_refresh()
+        sidebar_render()
         page.update()
 
     def load_session(session: dict):
@@ -111,12 +122,10 @@ def create_chat_view(
         # Add check-in banner if applicable
         if fresh.get("session_type") == "checkin":
             ctx = fresh.get("checkin_context") or {}
-            engine.chat_list.controls.append(
-                _build_checkin_banner(ctx.get("task_title", "Task"), ctx.get("due_date"))
-            )
+            engine.chat_list.controls.append(_build_checkin_banner(ctx.get("task_title", "Task"), ctx.get("due_date")))
         engine.load_messages(fresh.get("messages", []))
 
-        sidebar_refresh()
+        sidebar_render()
         page.update()
 
     def delete_session(session_id: str):
@@ -124,7 +133,7 @@ def create_chat_view(
         if state["session"] and state["session"]["id"] == session_id:
             new_chat()
         else:
-            sidebar_refresh()
+            sidebar_render()
             page.update()
 
     # --- Send message (wraps ChatEngine with session logic) ---
@@ -154,10 +163,11 @@ def create_chat_view(
 
     # Replace engine's input bar with our session-aware version
     from chat.input_bar import create_input_bar
+
     engine.input_bar, engine.message_input = create_input_bar(send_message)
 
     # --- Sidebar ---
-    sidebar_container, sidebar_refresh = create_sidebar(
+    sidebar_container, sidebar_render = create_sidebar(
         on_new_chat=new_chat,
         on_select_session=load_session,
         on_delete_session=delete_session,
@@ -171,13 +181,15 @@ def create_chat_view(
         sidebar_container.visible = not sidebar_container.visible
         sidebar_divider.visible = sidebar_container.visible
         if sidebar_container.visible:
-            sidebar_refresh()
+            sidebar_render()
         page.update()
 
     # --- Header ---
     toggle_btn = ft.IconButton(
-        icon=ft.Icons.MENU, tooltip="Chat history",
-        on_click=toggle_sidebar, icon_color=ft.Colors.TEAL_700,
+        icon=ft.Icons.MENU,
+        tooltip="Chat history",
+        on_click=toggle_sidebar,
+        icon_color=ft.Colors.TEAL_700,
     )
 
     header_controls = [
@@ -197,8 +209,11 @@ def create_chat_view(
 
     # --- Scroll-to-bottom button ---
     scroll_down_btn = ft.IconButton(
-        icon=ft.Icons.KEYBOARD_ARROW_DOWN, icon_size=22,
-        bgcolor=ft.Colors.TEAL, icon_color=ft.Colors.WHITE, visible=False,
+        icon=ft.Icons.KEYBOARD_ARROW_DOWN,
+        icon_size=22,
+        bgcolor=ft.Colors.TEAL,
+        icon_color=ft.Colors.WHITE,
+        visible=False,
         on_click=lambda e: page.run_task(_scroll_to_bottom),
         style=ft.ButtonStyle(shape=ft.CircleBorder(), shadow_color=ft.Colors.BLACK, elevation=4),
     )
@@ -230,9 +245,9 @@ def create_chat_view(
     chat_stack_controls = [chat_column]
     if notifications:
         chat_stack_controls.append(
-            ft.Container(content=notifications.panel, right=8, top=48),
+            ft.Container(content=notifications.panel, right=8, top=48),  # type: ignore[arg-type]
         )
-    chat_panel = ft.Stack(controls=chat_stack_controls, expand=True)
+    chat_panel = ft.Stack(controls=chat_stack_controls, expand=True)  # type: ignore[arg-type]
 
     # --- Profile loading ---
     if PROFILE_CACHE_PATH.exists():
@@ -273,14 +288,16 @@ def create_chat_view(
         spacing=0,
     )
 
-    view.send_prompt = lambda prompt: _auto_send(prompt)
-    view.start_checkin = lambda title, mai_message, event_id=None, due_date=None: _start_checkin(title, mai_message, event_id, due_date)
+    view.send_prompt = lambda prompt: _auto_send(prompt)  # type: ignore[attr-defined]
+    view.start_checkin = lambda title, mai_message, event_id=None, due_date=None: _start_checkin(  # type: ignore[attr-defined]
+        title, mai_message, event_id, due_date
+    )
 
     def _auto_send(prompt: str):
         engine.message_input.value = prompt
         send_message(None)
 
-    def _start_checkin(title: str, mai_message: str, event_id: str = None, due_date: str = None):
+    def _start_checkin(title: str, mai_message: str, event_id: str | None = None, due_date: str | None = None):
         session = store.create_session(title=f"[Check-in] {title}")
         state["session"] = session
 
@@ -297,7 +314,7 @@ def create_chat_view(
         engine.chat_list.controls.append(ChatMessage("MAI", mai_message))
 
         _save_to_db()
-        sidebar_refresh()
+        sidebar_render()
         page.update()
 
     return view

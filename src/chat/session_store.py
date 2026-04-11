@@ -1,6 +1,6 @@
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from tinydb import Query, TinyDB
 
@@ -17,7 +17,7 @@ class SessionStore:
         self._q = Query()
 
     def create_session(self, title: str = "New Chat") -> dict:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         session = {
             "id": str(uuid.uuid4()),
             "title": title,
@@ -33,9 +33,9 @@ class SessionStore:
 
     def get_all_sessions(self) -> list[dict]:
         with self._lock:
-            sessions = self._db.all()
+            sessions = self._db.all()  # type: ignore[return-value]
         sessions.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
-        return sessions
+        return sessions  # type: ignore[return-value]
 
     def get_session(self, session_id: str) -> dict | None:
         with self._lock:
@@ -47,7 +47,7 @@ class SessionStore:
             self._db.update(
                 {
                     "messages": messages,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(UTC).isoformat(),
                 },
                 self._q.id == session_id,
             )

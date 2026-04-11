@@ -1,24 +1,32 @@
 """Auto-update checker — queries GitHub Releases for new versions."""
 
+from __future__ import annotations
+
 import json
 import platform
 import threading
 import urllib.request
-from typing import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 GITHUB_REPO = "darwinsubramaniam/maicampus"
+
 
 # Read version from pyproject.toml (single source of truth)
 def _get_app_version() -> str:
     try:
         from importlib.metadata import version
+
         return version("maicampus")
     except Exception:
         pass
     # Fallback: parse pyproject.toml directly
     try:
-        from pathlib import Path
         import re
+        from pathlib import Path
+
         pyproject = Path(__file__).parent.parent / "pyproject.toml"
         match = re.search(r'version\s*=\s*"(.+?)"', pyproject.read_text())
         if match:
@@ -26,6 +34,7 @@ def _get_app_version() -> str:
     except Exception:
         pass
     return "0.0.0"
+
 
 APP_VERSION = _get_app_version()
 RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -48,13 +57,11 @@ def _classify_update(current: tuple[int, ...], latest: tuple[int, ...]) -> str:
 
 def _get_platform_asset_name() -> str:
     system = platform.system().lower()
-    if system == "darwin":
-        return "maicampus-macos.zip"
-    elif system == "windows":
-        return "maicampus-windows.zip"
-    elif system == "linux":
-        return "maicampus-linux.tar.gz"
-    return ""
+    return {
+        "darwin": "maicampus-macos.zip",
+        "windows": "maicampus-windows.zip",
+        "linux": "maicampus-linux.tar.gz",
+    }.get(system, "")
 
 
 def check_for_update(on_update_available: Callable[[str, str, str, str], None]):
@@ -65,6 +72,7 @@ def check_for_update(on_update_available: Callable[[str, str, str, str], None]):
     where update_type is 'major', 'minor', or 'patch'.
     Does nothing if already on latest or if check fails.
     """
+
     def _check():
         try:
             req = urllib.request.Request(
