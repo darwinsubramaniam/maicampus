@@ -1,0 +1,114 @@
+from datetime import datetime, timezone
+
+import flet as ft
+
+
+def _relative_time(iso_str: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        now = datetime.now(timezone.utc)
+        delta = now - dt
+        if delta.days == 0:
+            return "Today"
+        elif delta.days == 1:
+            return "Yesterday"
+        elif delta.days < 7:
+            return f"{delta.days} days ago"
+        else:
+            return dt.strftime("%b %d")
+    except (ValueError, TypeError):
+        return ""
+
+
+def create_sidebar(
+    on_new_chat: callable,
+    on_select_session: callable,
+    on_delete_session: callable,
+    get_sessions: callable,
+    active_session_id: callable,
+) -> tuple[ft.Container, callable]:
+
+    session_list = ft.ListView(expand=True, spacing=2, padding=ft.Padding(left=8, right=8, top=4, bottom=8))
+
+    def refresh():
+        sessions = get_sessions()
+        current_id = active_session_id()
+        session_list.controls.clear()
+        for session in sessions:
+            is_active = session["id"] == current_id
+            tile = ft.Container(
+                content=ft.Row(
+                    controls=[
+                        ft.Column(
+                            [
+                                ft.Text(
+                                    session.get("title", "New Chat"),
+                                    size=13,
+                                    weight=ft.FontWeight.W_600 if is_active else ft.FontWeight.NORMAL,
+                                    color=ft.Colors.TEAL_700 if is_active else ft.Colors.ON_SURFACE,
+                                    max_lines=1,
+                                    overflow=ft.TextOverflow.ELLIPSIS,
+                                    expand=True,
+                                ),
+                                ft.Text(
+                                    _relative_time(session.get("updated_at", "")),
+                                    size=10,
+                                    color=ft.Colors.GREY_500,
+                                ),
+                            ],
+                            spacing=2,
+                            expand=True,
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.DELETE_OUTLINE,
+                            icon_size=14,
+                            icon_color=ft.Colors.GREY_400,
+                            tooltip="Delete",
+                            on_click=lambda e, sid=session["id"]: on_delete_session(sid),
+                        ),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                padding=ft.Padding(left=12, right=4, top=8, bottom=8),
+                border_radius=10,
+                bgcolor=ft.Colors.PRIMARY_CONTAINER if is_active else None,
+                on_click=lambda e, s=session: on_select_session(s),
+                ink=True,
+            )
+            session_list.controls.append(tile)
+
+    new_chat_btn = ft.Container(
+        content=ft.Row(
+            controls=[
+                ft.Icon(ft.Icons.ADD_ROUNDED, size=18, color=ft.Colors.TEAL),
+                ft.Text("New Chat", size=13, weight=ft.FontWeight.W_500, color=ft.Colors.TEAL_700),
+            ],
+            spacing=8,
+        ),
+        padding=ft.Padding(left=14, right=14, top=10, bottom=10),
+        border_radius=10,
+        border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ft.Colors.TEAL)),
+        ink=True,
+        on_click=lambda e: on_new_chat(),
+    )
+
+    sidebar = ft.Container(
+        width=260,
+        border=ft.Border(right=ft.BorderSide(1, ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE))),
+        content=ft.Column(
+            controls=[
+                ft.Container(
+                    content=ft.Text("History", size=13, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_500),
+                    padding=ft.Padding(left=16, right=16, top=14, bottom=4),
+                ),
+                ft.Container(content=new_chat_btn, padding=ft.Padding(left=8, right=8, top=0, bottom=4)),
+                session_list,
+            ],
+            spacing=0,
+            expand=True,
+        ),
+    )
+
+    refresh()
+    return sidebar, refresh
