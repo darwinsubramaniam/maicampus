@@ -32,6 +32,7 @@ class ChatEngine:
         get_calendar_context: Callable | None = None,
         on_tool_executed: Callable | None = None,
         on_response_complete: Callable | None = None,
+        get_user_context: Callable | None = None,
         user_name: str = "You",
         user_pic: str = "",
     ):
@@ -39,6 +40,8 @@ class ChatEngine:
         self.get_config = get_config
         self.get_memory_manager = get_memory_manager
         self.get_calendar_context = get_calendar_context
+        # Returns the authenticated services.UserContext — scopes tools + enforces daily limits.
+        self.get_user_context = get_user_context
         self.on_tool_executed = on_tool_executed  # callback(tool_name, result)
         self.on_response_complete = on_response_complete  # callback() after AI response saved
         self.user_name = user_name
@@ -185,10 +188,25 @@ class ChatEngine:
         self.chat_list.controls.append(ai_msg)
         self.page.update()
 
+        user_ctx = self.get_user_context() if self.get_user_context else None
+
         async def do_stream():
             collected = []
             streaming_started = False
             try:
+                # Enforce the per-user daily limit before spending the server's AI budget.
+                if user_ctx is not None:
+                    from usage import check_and_increment
+
+                    status = check_and_increment(user_ctx.user_id)
+                    if not status.allowed:
+                        ai_msg.set_error(
+                            f"You've reached today's limit of {status.limit} messages. "
+                            "It resets tomorrow — see you then!"
+                        )
+                        self.page.update()
+                        return
+
                 system_prompt = self._build_system_prompt(text)
                 messages_to_send = [{"role": "system", "content": system_prompt}, *self.conversation]
                 provider_tools = get_tools_for_provider(config.provider)

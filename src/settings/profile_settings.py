@@ -1,8 +1,15 @@
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING
 
 import flet as ft
 
 from constants import PROFILE_CACHE_PATH, make_avatar
+from db import get_db, user_ref
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _KEY_PREFIX = "maicampus.profile."
 
@@ -31,71 +38,74 @@ async def save_profile(page: ft.Page | None = None, name: str = "", email: str =
     PROFILE_CACHE_PATH.write_text(json.dumps({"name": name, "email": email, "pic_path": pic_path}))
 
 
-def create_profile_settings(page: ft.Page) -> ft.Container:
-    name_field = ft.TextField(label="Name", width=400)
-    email_field = ft.TextField(label="Email", width=400)
-
-    pic_container = ft.Container(content=make_avatar())
-    pic_path_state = {"path": ""}
-
-    status_text = ft.Text("", color=ft.Colors.GREEN)
-
-    async def pick_photo(e):
-        files = await ft.FilePicker().pick_files(
-            allow_multiple=False,
-            file_type=ft.FilePickerFileType.CUSTOM,
-            allowed_extensions=["png", "jpg", "jpeg", "webp"],
-            dialog_title="Choose profile picture",
+def _load_user(user_id: str) -> dict:
+    """Read the signed-in user's profile from the SurrealDB `user` record."""
+    try:
+        rows = get_db().query(
+            "SELECT name, email, picture, student_id FROM $rid", {"rid": user_ref(user_id)}
         )
-        if files and files[0].path:
-            pic_path_state["path"] = files[0].path
-            pic_container.content = make_avatar(files[0].path)
-            page.update()
+    except Exception:
+        return {}
+    return rows[0] if rows else {}
 
-    async def do_save(e):
-        if not name_field.value.strip():
-            status_text.value = "Name is required."
-            status_text.color = ft.Colors.RED
-            page.update()
-            return
-        if not email_field.value.strip():
-            status_text.value = "Email is required."
-            status_text.color = ft.Colors.RED
-            page.update()
-            return
 
-        await save_profile(page, name_field.value.strip(), email_field.value.strip(), pic_path_state["path"])
-        status_text.value = "Profile saved."
-        status_text.color = ft.Colors.GREEN
-        page.update()
+def create_profile_settings(page: ft.Page, get_user_context: Callable | None = None) -> ft.Container:
+    """Read-only profile, sourced from the authenticated Google account (the `user` record).
 
-    async def _populate():
-        profile = await load_profile()
-        name_field.value = profile["name"]
-        email_field.value = profile["email"]
-        if profile["pic_path"]:
-            pic_path_state["path"] = profile["pic_path"]
-            pic_container.content = make_avatar(profile["pic_path"])
-        page.update()
+    Name, email and photo come from Google SSO and are not editable here — users change them in
+    their Google account. This replaces the old per-device editable form (which stored to a
+    shared file and didn't reflect the signed-in identity)."""
+    ctx = get_user_context() if get_user_context else None
+    data = _load_user(ctx.user_id) if ctx else {}
 
-    page.run_task(_populate)
+    name = (data.get("name") or "").strip() or "—"
+    email = (data.get("email") or "").strip() or "—"
+    picture = (data.get("picture") or "").strip()
+    matric = (data.get("student_id") or (ctx.student_id if ctx else "") or "").strip()
 
-    return ft.Container(
-        content=ft.Column(
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    def _row(label: str, value: str) -> ft.Container:
+        return ft.Container(
+            width=420,
+            padding=ft.Padding(16, 12, 16, 12),
+            border_radius=10,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_LOWEST,
+            border=ft.Border.all(1, ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE)),
+            content=ft.Row(
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                controls=[
+                    ft.Text(label, size=12, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(value, size=14, color=ft.Colors.ON_SURFACE, selectable=True),
+                ],
+            ),
+        )
+
+    controls = [
+        ft.Container(content=make_avatar(picture, radius=44)),
+        ft.Container(height=12),
+        ft.Text(name, size=20, weight=ft.FontWeight.W_700, color=ft.Colors.ON_SURFACE),
+        ft.Container(height=4),
+        ft.Text(email, size=13, color=ft.Colors.ON_SURFACE_VARIANT, selectable=True),
+        ft.Container(height=20),
+        _row("Email", email),
+    ]
+    if matric:
+        controls += [ft.Container(height=10), _row("Student ID", matric)]
+    controls += [
+        ft.Container(height=18),
+        ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=6,
             controls=[
-                pic_container,
-                ft.Container(height=8),
-                ft.TextButton("Change photo", icon=ft.Icons.CAMERA_ALT, on_click=pick_photo),
-                ft.Container(height=10),
-                name_field,
-                ft.Container(height=10),
-                email_field,
-                ft.Container(height=20),
-                ft.FilledButton("Save", icon=ft.Icons.SAVE, on_click=do_save),
-                ft.Container(height=10),
-                status_text,
+                ft.Icon(ft.Icons.VERIFIED_USER_OUTLINED, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text(
+                    "Synced from your UTM Google account.",
+                    size=12, italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
             ],
         ),
+    ]
+
+    return ft.Container(
+        content=ft.Column(horizontal_alignment=ft.CrossAxisAlignment.CENTER, controls=controls),
         padding=20,
     )

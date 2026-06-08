@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 from chat.chat_core import ChatEngine
-from chat.session_store import SessionStore
 from constants import relative_time as _relative_time
 
 
@@ -18,11 +17,15 @@ def create_floating_chat(
     page: ft.Page,
     get_config: Callable,
     get_memory_manager: Callable,
+    get_session_store: Callable | None = None,
     get_calendar_context: Callable | None = None,
     on_tool_executed: Callable | None = None,
-    session_store: SessionStore | None = None,
+    get_user_context: Callable | None = None,
+    user_name: str = "You",
+    user_pic: str = "",
 ) -> ft.Stack:
-    store = session_store or SessionStore()
+    assert get_session_store is not None, "create_floating_chat requires get_session_store"
+    store = get_session_store()
 
     engine = ChatEngine(
         page=page,
@@ -30,19 +33,10 @@ def create_floating_chat(
         get_memory_manager=get_memory_manager,
         get_calendar_context=get_calendar_context,
         on_tool_executed=on_tool_executed,
+        get_user_context=get_user_context,
+        user_name=user_name or "You",
+        user_pic=user_pic or "",
     )
-
-    async def _load_profile():
-        from settings.profile_settings import load_profile
-
-        try:
-            p = await load_profile()
-            engine.user_name = p.get("name") or "You"
-            engine.user_pic = p.get("pic_path") or ""
-        except Exception:
-            pass
-
-    page.run_task(_load_profile)
 
     state = {"session": None, "open": False, "history_open": False}
 

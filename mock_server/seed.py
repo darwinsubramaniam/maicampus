@@ -1,29 +1,18 @@
-"""Seed the mock backend with a believable UTM / Malaysian dataset.
+"""Seed the campus backend (SurrealDB) with a believable UTM / Malaysian dataset.
 
 Anchored to the assignment's FOL proof: course MECS0033 (Artificial Intelligence), taught by
 Dr Shafaatunnur Hasan, Monday 09:00-11:00 in Room N28, with student Darwin Subramaniam (MEC255043)
-enrolled. Broadened with more lecturers, students, courses, clubs and facilities so features can
-actually be exercised.
+enrolled. Enrollments are modelled as a graph edge ``student->enrolled->course``; each course
+embeds its ``timetable`` and links its ``lecturer``.
 
-seed() is idempotent: it no-ops once the students table is populated.
+seed() is idempotent: it no-ops once any student exists.
 """
 
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from sqlalchemy.orm import Session
-
-from mock_server.models import (
-    Booking,
-    Club,
-    Course,
-    Enrollment,
-    Facility,
-    Lecturer,
-    Student,
-    TimetableEntry,
-)
+from mock_server.db import query, thing
 
 # --- Lecturers (Faculty of Computing, UTM) ---------------------------------
 LECTURERS = [
@@ -118,57 +107,90 @@ FACILITIES = [
      "08:00", "22:00", "Max 2 hours per booking. Valid UTM matric required."),
 ]
 
+_SEMESTER = "2025/26-2"
+
 
 def _email_from_name(name: str) -> str:
     first = name.split()[0].lower()
     return f"{first}@graduate.utm.my"
 
 
-def seed(db: Session) -> None:
-    """Populate the database once. No-op if students already exist."""
-    if db.query(Student).count() > 0:
+def seed() -> None:
+    """Populate SurrealDB once. No-op if any student already exists."""
+    existing = query("SELECT VALUE id FROM student LIMIT 1")
+    if existing:
         return
 
-    # Lecturers
     for lid, name, title in LECTURERS:
-        db.add(Lecturer(id=lid, name=name, title=title, email=f"{lid.lower()}@utm.my"))
+        query(
+            "CREATE $rid CONTENT $data",
+            {"rid": thing("lecturer", lid),
+             "data": {"name": name, "title": title, "faculty": "Faculty of Computing",
+                      "email": f"{lid.lower()}@utm.my"}},
+        )
 
-    # Courses + timetable
     for code, title, credits, lecturer_id, slots in COURSES:
-        db.add(Course(code=code, title=title, credits=credits, lecturer_id=lecturer_id))
-        for day, start, end, room in slots:
-            db.add(TimetableEntry(course_code=code, day=day, start_time=start, end_time=end, room=room))
+        query(
+            "CREATE $rid CONTENT $data",
+            {"rid": thing("course", code),
+             "data": {
+                 "title": title, "credits": credits, "semester": _SEMESTER,
+                 "lecturer": thing("lecturer", lecturer_id),
+                 "timetable": [
+                     {"day": d, "start_time": s, "end_time": e, "room": r} for d, s, e, r in slots
+                 ],
+             }},
+        )
 
-    # Students
     for sid, name, year in STUDENTS:
-        db.add(Student(id=sid, name=name, email=_email_from_name(name), year=year))
+        query(
+            "CREATE $rid CONTENT $data",
+            {"rid": thing("student", sid),
+             "data": {"name": name, "email": _email_from_name(name), "year": year,
+                      "programme": "Bachelor of Computer Science"}},
+        )
 
-    # Enrollments
+    # Enrollments as graph edges: student -> enrolled -> course.
     for sid, codes in ENROLLMENTS.items():
         for code in codes:
-            db.add(Enrollment(student_id=sid, course_code=code))
+            query(
+                "RELATE $s->enrolled->$c",
+                {"s": thing("student", sid), "c": thing("course", code)},
+            )
 
-    # Clubs
     for cid, name, desc, interest, mday, mtime in CLUBS:
         slug = name.split()[0].lower()
-        db.add(Club(id=cid, name=name, description=desc, interest=interest,
-                    meeting_day=mday, meeting_time=mtime, contact_email=f"{slug}@club.utm.my"))
+        query(
+            "CREATE $rid CONTENT $data",
+            {"rid": thing("club", cid),
+             "data": {"name": name, "description": desc, "interest": interest,
+                      "meeting_day": mday, "meeting_time": mtime,
+                      "contact_email": f"{slug}@club.utm.my"}},
+        )
 
-    # Facilities
     for fid, name, ftype, cap, loc, opn, cls, rules in FACILITIES:
-        db.add(Facility(id=fid, name=name, type=ftype, capacity=cap, location=loc,
-                        open_time=opn, close_time=cls, booking_rules=rules))
+        query(
+            "CREATE $rid CONTENT $data",
+            {"rid": thing("facility", fid),
+             "data": {"name": name, "type": ftype, "capacity": cap, "location": loc,
+                      "open_time": opn, "close_time": cls, "booking_rules": rules}},
+        )
 
     # A few pre-existing bookings so availability / conflict (409) is demonstrable.
     today = date.today().isoformat()
     tomorrow = (date.today() + timedelta(days=1)).isoformat()
     now = datetime.now().isoformat(timespec="seconds")
-    db.add(Booking(student_id="MEC255043", facility_id="FAC01", date=today,
-                   start_time="14:00", end_time="16:00", status="confirmed", created_at=now))
-    db.add(Booking(student_id="MEC255060", facility_id="FAC03", date=today,
-                   start_time="10:00", end_time="12:00", status="confirmed", created_at=now))
-    db.add(Booking(student_id="MEC255068", facility_id="FAC05", date=tomorrow,
-                   start_time="18:00", end_time="19:00", status="confirmed", created_at=now))
+    pre = [
+        (1, "MEC255043", "FAC01", today, "14:00", "16:00"),
+        (2, "MEC255060", "FAC03", today, "10:00", "12:00"),
+        (3, "MEC255068", "FAC05", tomorrow, "18:00", "19:00"),
+    ]
+    for bid, sid, fid, d, st, et in pre:
+        query(
+            "CREATE $rid CONTENT $data",
+            {"rid": thing("booking", bid),
+             "data": {"student_id": sid, "facility_id": fid, "date": d,
+                      "start_time": st, "end_time": et, "status": "confirmed", "created_at": now}},
+        )
 
-    db.commit()
-    print("[mock_server] database seeded with UTM mock data.")
+    print("[mock_server] SurrealDB seeded with UTM mock data.", flush=True)

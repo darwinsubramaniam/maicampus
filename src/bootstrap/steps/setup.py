@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import flet as ft
 
-from memory.manager import MemoryManager, uses_local_embedder
+from memory.manager import uses_local_embedder, warmup
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -66,7 +66,7 @@ def step(page: ft.Page, get_config: Callable[[], ProviderConfig | None]) -> dict
 
     def _warm_up(config: ProviderConfig):
         try:
-            MemoryManager(config).initialize()
+            warmup()  # download/load the local embedding model used by SurrealDB-backed memory
             _finish_ready("AI memory is ready.")
         except Exception:
             # Non-fatal: the app retries memory init on startup. Don't block onboarding.

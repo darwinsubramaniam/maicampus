@@ -1,22 +1,25 @@
 from __future__ import annotations
 
-import threading
-from typing import TYPE_CHECKING
-
 import flet as ft
 
-import services
-
-if TYPE_CHECKING:
-    from ai_providers import ProviderConfig
-from bootstrap import create_bootstrap_view
+from ai_providers import server_config_from_env
+from auth import (
+    allowed_domains_label,
+    build_google_provider,
+    email_allowed,
+    google_oauth_configured,
+    resolve_user_context,
+)
 from campus_calendar import create_calendar_view, get_calendar_context
+from campus_calendar.event_store import CalendarEventStore
 from chat import create_chat_view
-from constants import BOOTSTRAP_FLAG
+from chat.session_store import SessionStore
+from constants import DEFAULT_STUDENT_ID
 from facility_booking import create_facility_view
 from memory import MemoryManager
 from notifications import NotificationCenter
 from planner import SmartPlannerTask
+from services import UserContext
 from settings import create_settings_view
 from theme import apply_theme
 from tools import calendar_tools as _calendar_tools  # noqa: F401  # side-effect: registers tools
@@ -24,46 +27,147 @@ from tools import facility_tools as _facility_tools  # noqa: F401  # side-effect
 from tools import planner_tools as _planner_tools  # noqa: F401  # side-effect: registers tools
 from tools import ukb_tools as _ukb_tools  # noqa: F401  # side-effect: registers tools
 
+# Local-dev identity used only when Google SSO is not configured, so `uv run flet run` works
+# offline. Production sets MAICAMPUS_GOOGLE_CLIENT_ID/SECRET and every user logs in for real.
+_DEV_USER_ID = "dev-local"
+
 
 def main(page: ft.Page):
     page.title = "MAI Campus"
     apply_theme(page)
 
-    current_config: dict = {"config": None}
-    memory_state: dict = {"mgr": None}
+    # One shared, server-funded AI config (DeepSeek by default). Never per-user.
+    server_config = server_config_from_env()
+
+    # Per-connection (per-user) state. main() runs once per connected client.
+    auth: dict = {"ctx": None, "name": "You", "pic": ""}
     planner_state: dict = {"task": None}
 
-    def get_config() -> ProviderConfig | None:
-        return current_config["config"]
+    def get_config():
+        return server_config
+
+    def get_user_context() -> UserContext | None:
+        return auth["ctx"]
 
     def get_memory_manager() -> MemoryManager | None:
-        return memory_state["mgr"]
+        ctx = auth["ctx"]
+        return MemoryManager(ctx.user_id) if ctx else None
+
+    def get_calendar_store() -> CalendarEventStore:
+        return CalendarEventStore(auth["ctx"].user_id)
+
+    def get_session_store() -> SessionStore:
+        return SessionStore(auth["ctx"].user_id)
 
     def get_cal_context() -> str:
-        return get_calendar_context(services.calendar_store)
+        ctx = auth["ctx"]
+        return get_calendar_context(CalendarEventStore(ctx.user_id)) if ctx else ""
 
-    def on_config_save(config: ProviderConfig):
-        current_config["config"] = config
-        mgr = MemoryManager(config)
-        memory_state["mgr"] = mgr
-        services.set_memory_getter(get_memory_manager)
-        threading.Thread(target=mgr.initialize, daemon=True).start()
+    # --- Login screen -------------------------------------------------------
+    def show_login():
+        page.navigation_bar = None
+        page.controls.clear()
 
-    def show_bootstrap():
-        current_config["config"] = None
-        memory_state["mgr"] = None
+        async def _do_login(e):
+            await page.login(build_google_provider())
+
+        login_card = ft.Container(
+            alignment=ft.Alignment.CENTER,
+            expand=True,
+            content=ft.Column(
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                tight=True,
+                spacing=0,
+                controls=[
+                    ft.Container(
+                        content=ft.Icon(ft.Icons.SCHOOL_ROUNDED, size=40, color=ft.Colors.PRIMARY),
+                        width=84,
+                        height=84,
+                        border_radius=28,
+                        alignment=ft.Alignment.CENTER,
+                        bgcolor=ft.Colors.PRIMARY_CONTAINER,
+                    ),
+                    ft.Container(height=20),
+                    ft.Text("MAI Campus", size=30, weight=ft.FontWeight.W_700, color=ft.Colors.ON_SURFACE),
+                    ft.Container(height=6),
+                    ft.Text(
+                        "Your AI student companion. Sign in to continue.",
+                        size=14,
+                        color=ft.Colors.ON_SURFACE_VARIANT,
+                    ),
+                    ft.Container(height=28),
+                    ft.FilledButton(
+                        "Sign in with Google",
+                        icon=ft.Icons.LOGIN,
+                        on_click=_do_login,
+                        style=ft.ButtonStyle(padding=ft.Padding(24, 18, 24, 18)),
+                    ),
+                ],
+            ),
+        )
+        page.add(login_card)
+
+    def on_login(e):
+        if getattr(e, "error", None):
+            show_login()
+            return
+        user = getattr(page.auth, "user", None)
+        if user is None:
+            show_login()
+            return
+        email = str(user.get("email") or "")
+        # Server-side gate: only allow UTM accounts (Google's `hd` hint is not a security control).
+        if not email_allowed(email):
+            page.logout()
+            show_access_denied(email)
+            return
+        auth["ctx"] = resolve_user_context(user)
+        auth["name"] = str(user.get("name") or "You")
+        auth["pic"] = str(user.get("picture") or "")
+        show_main_app()
+
+    def show_access_denied(email: str):
+        page.navigation_bar = None
+        page.controls.clear()
+
+        def _retry(e):
+            show_login()
+
+        page.add(
+            ft.Container(
+                alignment=ft.Alignment.CENTER,
+                expand=True,
+                content=ft.Column(
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    tight=True,
+                    controls=[
+                        ft.Icon(ft.Icons.BLOCK, size=48, color=ft.Colors.ERROR),
+                        ft.Container(height=16),
+                        ft.Text("UTM account required", size=24, weight=ft.FontWeight.W_700,
+                                color=ft.Colors.ON_SURFACE),
+                        ft.Container(height=8),
+                        ft.Text(
+                            f"{email or 'That account'} isn't a UTM account. "
+                            f"Please sign in with your university account ({allowed_domains_label()}).",
+                            size=14, text_align=ft.TextAlign.CENTER, color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                        ft.Container(height=24),
+                        ft.FilledButton("Try another account", icon=ft.Icons.SWITCH_ACCOUNT, on_click=_retry),
+                    ],
+                ),
+            )
+        )
+
+    def do_sign_out():
         if planner_state["task"]:
             planner_state["task"].stop()
             planner_state["task"] = None
-        services.reset()
-        page.navigation_bar = None
-        page.controls.clear()
-        bootstrap_view = create_bootstrap_view(page, on_bootstrap_complete)
-        page.add(bootstrap_view)
+        auth["ctx"] = None
+        page.logout()
+        show_login()
 
+    # --- Main application ---------------------------------------------------
     def show_main_app():
-        services.set_memory_getter(get_memory_manager)
-
         notif_center = NotificationCenter(page)
 
         def _on_tool_executed(name, result):
@@ -84,15 +188,24 @@ def main(page: ft.Page):
             page,
             get_config,
             get_memory_manager,
+            get_session_store,
             get_calendar_context=get_cal_context,
+            get_user_context=get_user_context,
             notifications=notif_center,
+            user_name=auth["name"],
+            user_pic=auth["pic"],
         )
         calendar_view = create_calendar_view(
             page,
             get_memory_manager,
+            get_calendar_store,
             get_config=get_config,
             get_calendar_context_fn=get_cal_context,
             on_tool_executed=_on_tool_executed,
+            get_session_store=get_session_store,
+            get_user_context=get_user_context,
+            user_name=auth["name"],
+            user_pic=auth["pic"],
         )
         facility_view = create_facility_view(
             page,
@@ -100,10 +213,14 @@ def main(page: ft.Page):
             get_config=get_config,
             get_calendar_context_fn=get_cal_context,
             on_tool_executed=_on_tool_executed,
+            get_session_store=get_session_store,
+            get_user_context=get_user_context,
+            user_name=auth["name"],
+            user_pic=auth["pic"],
         )
         # Create planner early so we can pass scan to settings
         planner = SmartPlannerTask(
-            store=services.calendar_store,
+            store=get_calendar_store(),
             get_memory_manager=get_memory_manager,
             notification_center=notif_center,
             page=page,
@@ -111,7 +228,7 @@ def main(page: ft.Page):
         )
 
         settings_view = create_settings_view(
-            page, on_ai_save=on_config_save, on_reset=show_bootstrap, on_scan=planner._scan
+            page, on_logout=do_sign_out, on_scan=planner._scan, get_user_context=get_user_context
         )
 
         body = ft.Container(content=chat_view, expand=True)
@@ -167,6 +284,10 @@ def main(page: ft.Page):
             ],
             on_change=switch_tab,
             indicator_color=ft.Colors.PRIMARY_CONTAINER,
+            # Pin a compact height + always-show labels so the bar fits the web viewport
+            # (the default M3 height overflows slightly and clips the labels).
+            height=68,
+            label_behavior=ft.NavigationBarLabelBehavior.ALWAYS_SHOW,
         )
 
         page.controls.clear()
@@ -211,17 +332,14 @@ def main(page: ft.Page):
 
         check_for_update(_on_update)
 
-    def on_bootstrap_complete(config: ProviderConfig):
-        on_config_save(config)
-        page.navigation_bar = None
-        page.controls.clear()
-        show_main_app()
-
-    if BOOTSTRAP_FLAG.exists():
-        show_main_app()
+    # --- Entry: gate the whole app behind authentication --------------------
+    if google_oauth_configured():
+        page.on_login = on_login
+        show_login()
     else:
-        bootstrap_view = create_bootstrap_view(page, on_bootstrap_complete)
-        page.add(bootstrap_view)
+        # No Google SSO configured (local dev) — auto-sign-in as the demo student.
+        auth["ctx"] = UserContext(user_id=_DEV_USER_ID, student_id=DEFAULT_STUDENT_ID)
+        show_main_app()
 
 
 ft.run(main)

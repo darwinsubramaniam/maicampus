@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 import flet as ft
 
 from chat.chat_core import ChatEngine
 from chat.message import ChatMessage
-from chat.session_store import SessionStore
 from chat.sidebar import create_sidebar
-from constants import PROFILE_CACHE_PATH
-from settings.profile_settings import load_profile
 from ui import FONT_DISPLAY, suggestion_chip, view_header
 
 if TYPE_CHECKING:
@@ -58,11 +54,15 @@ def create_chat_view(
     page: ft.Page,
     get_config: Callable,
     get_memory_manager: Callable,
+    get_session_store: Callable,
     get_calendar_context: Callable | None = None,
+    get_user_context: Callable | None = None,
     notifications: NotificationCenter | None = None,
+    user_name: str = "You",
+    user_pic: str = "",
 ) -> ft.Row:
-    store = SessionStore()
-    profile: dict = {"name": "You", "pic_path": ""}
+    store = get_session_store()
+    profile: dict = {"name": user_name or "You", "pic_path": user_pic or ""}
     state: dict = {"session": None}
 
     # --- Tool execution notification ---
@@ -82,6 +82,9 @@ def create_chat_view(
         get_calendar_context=get_calendar_context,
         on_tool_executed=_on_tool_executed,
         on_response_complete=lambda: _on_response_complete(),
+        get_user_context=get_user_context,
+        user_name=profile["name"],
+        user_pic=profile["pic_path"],
     )
 
     def _on_response_complete():
@@ -306,37 +309,11 @@ def create_chat_view(
         )
     chat_panel = ft.Stack(controls=chat_stack_controls, expand=True)  # type: ignore[arg-type]
 
-    # --- Profile loading ---
-    if PROFILE_CACHE_PATH.exists():
-        try:
-            cached = json.loads(PROFILE_CACHE_PATH.read_text())
-            profile["name"] = cached.get("name") or "You"
-            profile["pic_path"] = cached.get("pic_path") or ""
-        except Exception:
-            pass
-
-    async def _init_chat():
-        try:
-            p = await load_profile()
-            profile["name"] = p.get("name") or "You"
-            profile["pic_path"] = p.get("pic_path") or ""
-            PROFILE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            PROFILE_CACHE_PATH.write_text(json.dumps({"name": profile["name"], "pic_path": profile["pic_path"]}))
-        except Exception:
-            pass
-
-        sessions = store.get_all_sessions()
-        if sessions:
-            load_session(sessions[0])
-        page.update()
-
-    page.run_task(_init_chat)
-
-    # Sync session restore with cached profile
-    if profile["name"] != "You" or profile["pic_path"]:
-        sessions = store.get_all_sessions()
-        if sessions:
-            load_session(sessions[0])
+    # --- Restore the most recent session for this user ---
+    # Profile (name/pic) comes from the authenticated Google identity passed in by main().
+    sessions = store.get_all_sessions()
+    if sessions:
+        load_session(sessions[0])
 
     # --- Build view ---
     view = ft.Row(

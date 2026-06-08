@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,15 @@ class Provider(Enum):
     CLAUDE = "Claude"
     GEMINI = "Gemini"
     DEEPSEEK = "DeepSeek"
+
+
+_PROVIDER_BY_NAME = {
+    "openai": Provider.OPENAI,
+    "claude": Provider.CLAUDE,
+    "anthropic": Provider.CLAUDE,
+    "gemini": Provider.GEMINI,
+    "deepseek": Provider.DEEPSEEK,
+}
 
 
 DEFAULT_MODELS = {
@@ -39,6 +49,21 @@ class ProviderConfig:
     @property
     def effective_model(self) -> str:
         return self.model or DEFAULT_MODELS[self.provider]
+
+
+def server_config_from_env() -> ProviderConfig:
+    """Build the single server-side AI config from the environment (DeepSeek by default).
+
+    All users share this key — the server funds the AI budget and per-user daily limits cap it.
+    Env: ``MAICAMPUS_AI_PROVIDER`` (default ``deepseek``), ``MAICAMPUS_AI_API_KEY``,
+    ``MAICAMPUS_AI_MODEL`` (optional override).
+    """
+    provider = _PROVIDER_BY_NAME.get(os.environ.get("MAICAMPUS_AI_PROVIDER", "deepseek").lower(), Provider.DEEPSEEK)
+    return ProviderConfig(
+        provider=provider,
+        api_key=os.environ.get("MAICAMPUS_AI_API_KEY", ""),
+        model=os.environ.get("MAICAMPUS_AI_MODEL") or None,
+    )
 
 
 @dataclass
