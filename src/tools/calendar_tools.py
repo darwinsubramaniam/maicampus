@@ -57,6 +57,7 @@ def _handle_get_upcoming(args: dict) -> dict:
         et = event_type_from_str(event.get("type", "custom"))
         events.append(
             {
+                "event_id": event.get("id", ""),
                 "date": d.isoformat(),
                 "title": event.get("title", ""),
                 "type": EVENT_LABELS.get(et, "Event"),
@@ -76,6 +77,7 @@ def _handle_get_events_for_date(args: dict) -> dict:
         et = event_type_from_str(event.get("type", "custom"))
         events.append(
             {
+                "event_id": event.get("id", ""),
                 "title": event.get("title", ""),
                 "type": EVENT_LABELS.get(et, "Event"),
                 "time": event_time_str(event),
@@ -84,6 +86,56 @@ def _handle_get_events_for_date(args: dict) -> dict:
         )
 
     return {"date": target.isoformat(), "events": events, "count": len(events)}
+
+
+def _handle_delete_event(args: dict) -> dict:
+    store = _get_store()
+    event_id = args.get("event_id")
+
+    # Preferred path: delete a specific event by id.
+    if event_id:
+        event = store.get_event(event_id)
+        if not event:
+            return {"success": False, "error": f"No event found with id '{event_id}'."}
+        store.delete_event(event_id)
+        return {
+            "success": True,
+            "deleted_count": 1,
+            "deleted": [{"event_id": event_id, "title": event.get("title", "")}],
+            "message": f"Deleted '{event.get('title', 'event')}' from the calendar.",
+        }
+
+    # Fallback: delete by title (case-insensitive), optionally narrowed to a date.
+    title = (args.get("title") or "").strip()
+    if not title:
+        return {"success": False, "error": "Provide either an event_id or a title to delete."}
+
+    date_filter = args.get("date")
+    if date_filter:
+        try:
+            candidates = store.get_events_for_date(date.fromisoformat(date_filter))
+        except ValueError:
+            return {"success": False, "error": "Invalid date format. Use YYYY-MM-DD."}
+    else:
+        candidates = store.get_all_events()
+
+    title_lower = title.lower()
+    matches = [e for e in candidates if e.get("title", "").lower() == title_lower]
+    if not matches:
+        return {"success": False, "error": f"No events found matching title '{title}'."}
+
+    deleted = []
+    for e in matches:
+        store.delete_event(e["id"])
+        deleted.append({"event_id": e["id"], "title": e.get("title", "")})
+
+    scope = f" on {date_filter}" if date_filter else ""
+    return {
+        "success": True,
+        "deleted_count": len(deleted),
+        "deleted": deleted,
+        "message": f"Deleted {len(deleted)} event(s) titled '{title}'{scope} from the calendar.",
+    }
 
 
 # Register tools
@@ -136,6 +188,40 @@ register(
             "required": [],
         },
         handler=_handle_get_upcoming,
+    )
+)
+
+register(
+    ToolDefinition(
+        name="delete_calendar_event",
+        description=(
+            "Delete one or more events from the student's calendar. Prefer passing the exact"
+            " 'event_id' returned by get_upcoming_events or get_events_for_date. If you don't"
+            " have an id, pass the event 'title' (and optionally a 'date') to remove all matching"
+            " events — useful for clearing a recurring/repeated series the student no longer wants."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "event_id": {
+                    "type": "string",
+                    "description": "The id of the specific event to delete (preferred).",
+                },
+                "title": {
+                    "type": "string",
+                    "description": (
+                        "Exact event title to match when no event_id is known."
+                        " Deletes all events with this title."
+                    ),
+                },
+                "date": {
+                    "type": "string",
+                    "description": "Optional YYYY-MM-DD date to narrow a title-based delete to a single day.",
+                },
+            },
+            "required": [],
+        },
+        handler=_handle_delete_event,
     )
 )
 

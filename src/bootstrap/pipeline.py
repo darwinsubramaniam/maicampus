@@ -13,13 +13,21 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from bootstrap.steps import ai_provider, done, profile, welcome
+from bootstrap.steps import ai_provider, done, profile, setup, welcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    import flet as ft
 
-def build_pipeline(on_config_ready: Callable) -> list[dict]:
+    from ai_providers import ProviderConfig
+
+
+def build_pipeline(
+    page: ft.Page,
+    on_config_ready: Callable,
+    get_config: Callable[[], ProviderConfig | None],
+) -> list[dict]:
     """Build the ordered list of bootstrap steps."""
     return [
         welcome.step(),
@@ -27,5 +35,6 @@ def build_pipeline(on_config_ready: Callable) -> list[dict]:
         ai_provider.step(on_config_ready),
         # Future steps go here, e.g.:
         # campus_selection.step(),
+        setup.step(page, get_config),
         done.step(),
     ]

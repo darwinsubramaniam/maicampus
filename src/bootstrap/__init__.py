@@ -30,9 +30,12 @@ def create_bootstrap_view(page: ft.Page, on_complete: Callable) -> ft.Container:
     def on_config_ready(config: ProviderConfig):
         saved_config["config"] = config
 
+    def get_config() -> ProviderConfig | None:
+        return saved_config["config"]
+
     async def on_finish():
         _mark_bootstrapped()
         on_complete(saved_config["config"])
 
-    step_defs = build_pipeline(on_config_ready)
+    step_defs = build_pipeline(page, on_config_ready, get_config)
     return create_wizard(page, step_defs, on_finish)

@@ -22,11 +22,13 @@ __all__ = [
     "facility_book",
     "facility_bookings",
     "facility_cancel",
+    "facility_health",
     "facility_list",
     "ukb_clubs",
     "ukb_course",
     "ukb_courses",
     "ukb_facilities",
+    "ukb_health",
     "ukb_student_timetable",
 ]
 
@@ -38,10 +40,7 @@ def _request(method: str, path: str, **kwargs: Any) -> Any:
         resp = httpx.request(method, url, timeout=_TIMEOUT, **kwargs)
     except httpx.RequestError:
         return {
-            "error": (
-                "The campus service is unavailable. Make sure the mock backend is running "
-                "(`docker compose up`)."
-            )
+            "error": "The campus service is currently unavailable. Please try again later."
         }
     if resp.status_code >= 400:
         detail = _safe_detail(resp)
@@ -59,6 +58,47 @@ def _safe_detail(resp: httpx.Response) -> str:
     except ValueError:
         pass
     return f"Request failed with status {resp.status_code}."
+
+
+# --- Health checks ---------------------------------------------------------
+
+
+def _health(path: str) -> dict[str, Any]:
+    """Ping a service endpoint and report reachability + round-trip latency.
+
+    Returns ``{"ok": bool, "status_code": int | None, "latency_ms": int | None,
+    "detail": str}`` — never raises, so the Settings health panel can render a
+    status for both the "up" and "down" cases.
+    """
+    url = f"{API_BASE_URL}{path}"
+    try:
+        with httpx.Client(timeout=_TIMEOUT) as client:
+            resp = client.get(url)
+        latency_ms = round(resp.elapsed.total_seconds() * 1000)
+    except httpx.RequestError:
+        return {
+            "ok": False,
+            "status_code": None,
+            "latency_ms": None,
+            "detail": "Unreachable — the campus service is offline.",
+        }
+    ok = resp.status_code < 500
+    return {
+        "ok": ok,
+        "status_code": resp.status_code,
+        "latency_ms": latency_ms,
+        "detail": "Online" if ok else _safe_detail(resp),
+    }
+
+
+def ukb_health() -> dict[str, Any]:
+    """Health check for the University Knowledge Base API."""
+    return _health("/ukb/facilities")
+
+
+def facility_health() -> dict[str, Any]:
+    """Health check for the Facility Booking API."""
+    return _health("/facility/facilities")
 
 
 # --- University Knowledge Base (read-only) ---------------------------------

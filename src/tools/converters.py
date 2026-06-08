@@ -60,7 +60,8 @@ def get_tools_for_provider(provider: Provider) -> list | None:
     if not tools:
         return None
 
-    if provider == Provider.OPENAI:
+    if provider in (Provider.OPENAI, Provider.DEEPSEEK):
+        # DeepSeek uses the OpenAI-compatible API, including its tool/function format.
         return [_to_openai(t) for t in tools]
     elif provider == Provider.CLAUDE:
         return [_to_claude(t) for t in tools]

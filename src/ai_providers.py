@@ -13,12 +13,20 @@ class Provider(Enum):
     OPENAI = "OpenAI"
     CLAUDE = "Claude"
     GEMINI = "Gemini"
+    DEEPSEEK = "DeepSeek"
 
 
 DEFAULT_MODELS = {
     Provider.OPENAI: "gpt-4o",
     Provider.CLAUDE: "claude-sonnet-4-20250514",
     Provider.GEMINI: "gemini-2.5-flash",
+    Provider.DEEPSEEK: "deepseek-chat",
+}
+
+# Base URLs for OpenAI-compatible providers (None = official OpenAI endpoint).
+OPENAI_COMPATIBLE_BASE_URLS = {
+    Provider.OPENAI: None,
+    Provider.DEEPSEEK: "https://api.deepseek.com",
 }
 
 
@@ -61,7 +69,7 @@ def stream_response(
         chat_messages = messages[1:]
 
     match config.provider:
-        case Provider.OPENAI:
+        case Provider.OPENAI | Provider.DEEPSEEK:
             yield from _stream_openai(config, messages, tools=tools)
         case Provider.CLAUDE:
             yield from _stream_claude(config, chat_messages, system=system_msg, tools=tools)
@@ -76,7 +84,8 @@ def _stream_openai(
 ) -> Generator[StreamItem]:
     from openai import OpenAI
 
-    client = OpenAI(api_key=config.api_key)
+    base_url = OPENAI_COMPATIBLE_BASE_URLS.get(config.provider)
+    client = OpenAI(api_key=config.api_key, base_url=base_url)
     kwargs = {
         "model": config.effective_model,
         "messages": messages,

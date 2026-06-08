@@ -136,7 +136,8 @@ class ChatEngine:
     def _append_tool_turn(
         self, provider: Provider, messages: list[dict], tool_calls: list[ToolCall], results: list[dict]
     ):
-        if provider == Provider.OPENAI:
+        if provider in (Provider.OPENAI, Provider.DEEPSEEK):
+            # DeepSeek follows the OpenAI tool-call / tool-result message shape.
             openai_tool_calls = [
                 {
                     "id": tc.call_id,
