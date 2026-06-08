@@ -165,6 +165,5 @@ cython_debug/
 # Flet
 storage/
 
-# UV lock file
-uv.lock
+# uv.lock is committed for reproducible builds (Dockerfile.web uses `uv sync --frozen`).
 .DS_Store

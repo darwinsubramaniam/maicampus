@@ -16,6 +16,8 @@ services:
     command: start --user root --pass root --bind 0.0.0.0:8000 surrealkv:/data/database.db
     volumes:
       - surrealdata:/data
+    ports:
+      - "18000:8000"
     # No host port — SurrealDB stays internal to the compose network (shared-server friendly).
     expose:
       - "8000"
