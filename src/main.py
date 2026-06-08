@@ -13,13 +13,16 @@ from bootstrap import create_bootstrap_view
 from campus_calendar import create_calendar_view, get_calendar_context
 from chat import create_chat_view
 from constants import BOOTSTRAP_FLAG
+from facility_booking import create_facility_view
 from memory import MemoryManager
 from notifications import NotificationCenter
 from planner import SmartPlannerTask
 from settings import create_settings_view
 from theme import apply_theme
 from tools import calendar_tools as _calendar_tools  # noqa: F401  # side-effect: registers tools
+from tools import facility_tools as _facility_tools  # noqa: F401  # side-effect: registers tools
 from tools import planner_tools as _planner_tools  # noqa: F401  # side-effect: registers tools
+from tools import ukb_tools as _ukb_tools  # noqa: F401  # side-effect: registers tools
 
 
 def main(page: ft.Page):
@@ -70,6 +73,12 @@ def main(page: ft.Page):
                     icon=ft.Icons.CALENDAR_MONTH,
                     color=ft.Colors.TEAL,
                 )
+            elif name == "book_facility" and result.get("booked"):
+                notif_center.add(
+                    f"Booked {result.get('facility', 'facility')} · {result.get('date', '')} {result.get('time', '')}",
+                    icon=ft.Icons.EVENT_AVAILABLE,
+                    color=ft.Colors.TEAL,
+                )
 
         chat_view = create_chat_view(
             page,
@@ -79,6 +88,13 @@ def main(page: ft.Page):
             notifications=notif_center,
         )
         calendar_view = create_calendar_view(
+            page,
+            get_memory_manager,
+            get_config=get_config,
+            get_calendar_context_fn=get_cal_context,
+            on_tool_executed=_on_tool_executed,
+        )
+        facility_view = create_facility_view(
             page,
             get_memory_manager,
             get_config=get_config,
@@ -106,6 +122,8 @@ def main(page: ft.Page):
                 body.content = chat_view
             elif index == 1:
                 body.content = calendar_view
+            elif index == 2:
+                body.content = facility_view
             else:
                 body.content = settings_view
             page.update()
@@ -135,6 +153,11 @@ def main(page: ft.Page):
                     icon=ft.Icons.CALENDAR_MONTH_OUTLINED,
                     selected_icon=ft.Icons.CALENDAR_MONTH,
                     label="Calendar",
+                ),
+                ft.NavigationBarDestination(
+                    icon=ft.Icons.MEETING_ROOM_OUTLINED,
+                    selected_icon=ft.Icons.MEETING_ROOM,
+                    label="Booking",
                 ),
                 ft.NavigationBarDestination(
                     icon=ft.Icons.SETTINGS_OUTLINED,

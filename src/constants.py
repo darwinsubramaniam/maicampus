@@ -1,5 +1,6 @@
 """Shared constants and utility functions for MAI Campus."""
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,6 +13,13 @@ CHAT_DB_PATH = APP_DIR / "chat_history.json"
 CALENDAR_DB_PATH = APP_DIR / "calendar_events.json"
 CHROMA_DB_PATH = APP_DIR / "chroma_db"
 PROFILE_CACHE_PATH = APP_DIR / "profile.json"
+
+# Mock UTM backend (University Knowledge Base + Facility Booking).
+# Run it with `docker compose up --build`; see mock_server/ and docker-compose.yml.
+# Host port is 28000 (the in-container webapp overrides this to http://api:8000).
+API_BASE_URL = os.environ.get("MAICAMPUS_API_BASE", "http://localhost:28000")
+# Demo student identity — Darwin Subramaniam, the FOL-proof scenario student.
+DEFAULT_STUDENT_ID = os.environ.get("MAICAMPUS_STUDENT_ID", "MEC255043")
 
 
 def relative_time(iso_str: str) -> str:
@@ -28,7 +36,7 @@ def relative_time(iso_str: str) -> str:
             return f"{delta.days} days ago"
         else:
             return dt.strftime("%b %d")
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return ""
 
 

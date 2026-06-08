@@ -1,0 +1,14 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#19C9B4"/>
+      <stop offset="1" stop-color="#00796B"/>
+    </linearGradient>
+  </defs>
+  <!-- Full-bleed square (no rounded corners) so the OS maskable crop never exposes gaps. -->
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#teal)"/>
+  <!-- Glyph kept within the maskable safe zone (~64% center). -->
+  <g transform="translate(285 285) scale(18.9)" fill="#FFFFFF">
+    <path d="M5 13.18v4L12 21l7-3.82v-4L12 17l-7-3.82zM12 3L1 9l11 6 9-4.91V17h2V9L12 3z"/>
+  </g>
+</svg>

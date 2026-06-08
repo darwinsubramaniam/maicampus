@@ -9,9 +9,11 @@ if TYPE_CHECKING:
 
 from settings.ai_settings import create_ai_settings
 from settings.appearance_settings import create_appearance_settings
+from settings.knowledge_settings import create_knowledge_settings
 from settings.planner_settings import create_planner_settings
 from settings.profile_settings import create_profile_settings
 from settings.reset_settings import create_reset_settings
+from ui import FONT_DISPLAY, section_card
 
 
 def create_settings_view(
@@ -20,6 +22,7 @@ def create_settings_view(
     profile_section = create_profile_settings(page)
     appearance_section = create_appearance_settings(page)
     ai_section = create_ai_settings(page, on_ai_save)
+    knowledge_section = create_knowledge_settings(page)
     planner_section = create_planner_settings(page, on_scan=on_scan)
     reset_section = create_reset_settings(page, on_reset)
 
@@ -43,6 +46,12 @@ def create_settings_view(
             "content": ai_section,
         },
         {
+            "label": "Knowledge",
+            "icon": ft.Icons.SCHOOL_OUTLINED,
+            "selected_icon": ft.Icons.SCHOOL,
+            "content": knowledge_section,
+        },
+        {
             "label": "Planner",
             "icon": ft.Icons.AUTO_AWESOME_OUTLINED,
             "selected_icon": ft.Icons.AUTO_AWESOME,
@@ -58,14 +67,14 @@ def create_settings_view(
 
     content_area = ft.Container(
         content=sections[0]["content"],
-        expand=True,
-        padding=ft.Padding(left=24, right=24, top=16, bottom=16),
+        padding=0,
     )
 
     section_title = ft.Text(
         sections[0]["label"],
-        size=22,
-        weight=ft.FontWeight.W_600,
+        size=24,
+        weight=ft.FontWeight.W_700,
+        font_family=FONT_DISPLAY,
         color=ft.Colors.ON_SURFACE,
     )
 
@@ -76,10 +85,11 @@ def create_settings_view(
         controls=[
             ft.Container(
                 content=ft.Column(
-                    controls=[section_title, content_area],
+                    controls=[section_title, ft.Container(height=4), section_card(content_area, padding=8)],
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=8,
                 ),
-                padding=ft.Padding(left=24, right=24, top=20, bottom=16),
+                padding=ft.Padding(left=24, right=24, top=28, bottom=24),
                 alignment=ft.Alignment.TOP_CENTER,
                 expand=True,
             ),

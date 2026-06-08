@@ -2,6 +2,8 @@ from typing import cast
 
 import flet as ft
 
+from ui import FONT_DISPLAY, soft_shadow
+
 
 def _icon_avatar(icon: ft.IconData, bgcolor: str) -> ft.CircleAvatar:
     return ft.CircleAvatar(
@@ -48,12 +50,12 @@ class ChatMessage(ft.Row):
 
         self._loading_row = ft.Row(
             controls=[
-                ft.ProgressRing(width=12, height=12, stroke_width=2, color=ft.Colors.TEAL),
+                ft.ProgressRing(width=12, height=12, stroke_width=2, color=ft.Colors.PRIMARY),
                 ft.Text(
                     "MAI is thinking...",
                     size=12,
                     italic=True,
-                    color=ft.Colors.GREY_500,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
                 ),
             ],
             spacing=8,
@@ -65,7 +67,7 @@ class ChatMessage(ft.Row):
             if is_error
             else ft.Colors.ON_PRIMARY_CONTAINER
             if is_user
-            else ft.Colors.TEAL_700
+            else ft.Colors.PRIMARY
         )
 
         self._bubble = ft.Container(
@@ -73,8 +75,9 @@ class ChatMessage(ft.Row):
                 [
                     ft.Text(
                         "Error" if is_error else author,
-                        weight=ft.FontWeight.W_600,
+                        weight=ft.FontWeight.W_700,
                         size=11,
+                        font_family=FONT_DISPLAY,
                         color=author_color,
                     ),
                     self._loading_row,
@@ -91,12 +94,17 @@ class ChatMessage(ft.Row):
                 else ft.Colors.SURFACE_CONTAINER_HIGHEST
             ),
             border_radius=ft.BorderRadius(
-                top_left=16 if is_user else 4,
-                top_right=4 if is_user else 16,
-                bottom_left=16,
-                bottom_right=16,
+                top_left=18 if is_user else 4,
+                top_right=4 if is_user else 18,
+                bottom_left=18,
+                bottom_right=18,
             ),
-            padding=ft.Padding(left=14, right=14, top=10, bottom=10),
+            border=(
+                None if is_user or is_error
+                else ft.Border.all(1, ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE))
+            ),
+            shadow=None if is_user else soft_shadow(opacity=0.05, blur=12, y=3),
+            padding=ft.Padding(left=15, right=15, top=11, bottom=11),
             expand=True,
         )
 

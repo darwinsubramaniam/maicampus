@@ -13,6 +13,7 @@ from chat.session_store import SessionStore
 from chat.sidebar import create_sidebar
 from constants import PROFILE_CACHE_PATH
 from settings.profile_settings import load_profile
+from ui import FONT_DISPLAY, suggestion_chip, view_header
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -86,6 +87,66 @@ def create_chat_view(
     def _on_response_complete():
         _save_to_db()
 
+    # --- Welcome / empty state ---
+    suggestions = [
+        ("What's on my timetable today?", ft.Icons.SCHEDULE),
+        ("Book a study pod for tomorrow", ft.Icons.MEETING_ROOM),
+        ("When does the library close?", ft.Icons.LOCAL_LIBRARY),
+        ("Help me plan my week", ft.Icons.AUTO_AWESOME),
+    ]
+    welcome = ft.Container(
+        expand=True,
+        alignment=ft.Alignment.CENTER,
+        padding=32,
+        content=ft.Column(
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            tight=True,
+            spacing=0,
+            controls=[
+                ft.Container(
+                    content=ft.Icon(ft.Icons.SCHOOL_ROUNDED, size=34, color=ft.Colors.PRIMARY),
+                    width=72,
+                    height=72,
+                    border_radius=24,
+                    alignment=ft.Alignment.CENTER,
+                    bgcolor=ft.Colors.PRIMARY_CONTAINER,
+                ),
+                ft.Container(height=20),
+                ft.Text(
+                    "Hi, I'm MAI",
+                    size=30,
+                    weight=ft.FontWeight.W_700,
+                    font_family=FONT_DISPLAY,
+                    color=ft.Colors.ON_SURFACE,
+                ),
+                ft.Container(height=6),
+                ft.Text(
+                    "Your campus companion — classes, deadlines,\nbookings, and everything in between.",
+                    size=14,
+                    text_align=ft.TextAlign.CENTER,
+                    color=ft.Colors.ON_SURFACE_VARIANT,
+                ),
+                ft.Container(height=28),
+                ft.Container(
+                    width=560,
+                    content=ft.Row(
+                        wrap=True,
+                        spacing=10,
+                        run_spacing=10,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        controls=[
+                            suggestion_chip(label, icon, lambda p=label: _auto_send(p))
+                            for label, icon in suggestions
+                        ],
+                    ),
+                ),
+            ],
+        ),
+    )
+
+    def _sync_empty():
+        welcome.visible = len(engine.chat_list.controls) == 0
+
     # --- Session management ---
     def _active_session_id() -> str | None:
         s = state["session"]
@@ -100,6 +161,7 @@ def create_chat_view(
         engine.clear()
         engine.checkin_context = None
         sidebar_render()
+        _sync_empty()
         page.update()
 
     def load_session(session: dict):
@@ -126,6 +188,7 @@ def create_chat_view(
         engine.load_messages(fresh.get("messages", []))
 
         sidebar_render()
+        _sync_empty()
         page.update()
 
     def delete_session(session_id: str):
@@ -160,6 +223,7 @@ def create_chat_view(
         engine.user_pic = profile["pic_path"]
 
         engine._send_message(e)
+        _sync_empty()
 
     # Replace engine's input bar with our session-aware version
     from chat.input_bar import create_input_bar
@@ -189,22 +253,14 @@ def create_chat_view(
         icon=ft.Icons.MENU,
         tooltip="Chat history",
         on_click=toggle_sidebar,
-        icon_color=ft.Colors.TEAL_700,
+        icon_color=ft.Colors.ON_SURFACE_VARIANT,
     )
 
-    header_controls = [
-        toggle_btn,
-        ft.Icon(ft.Icons.SCHOOL, color=ft.Colors.TEAL, size=20),
-        ft.Text("MAI Campus", size=16, weight=ft.FontWeight.W_600, color=ft.Colors.TEAL_700),
-        ft.Container(expand=True),
-    ]
-    if notifications:
-        header_controls.append(notifications.bell_button)
-
-    chat_header = ft.Container(
-        content=ft.Row(controls=header_controls, vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
-        padding=ft.Padding(left=4, right=8, top=6, bottom=6),
-        border=ft.Border(bottom=ft.BorderSide(1, ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE))),
+    chat_header = view_header(
+        "MAI Campus",
+        ft.Icons.SCHOOL,
+        leading=toggle_btn,
+        trailing=[notifications.bell_button] if notifications else None,
     )
 
     # --- Scroll-to-bottom button ---
@@ -234,6 +290,7 @@ def create_chat_view(
     chat_area = ft.Stack(
         controls=[
             engine.chat_list,
+            welcome,
             ft.Container(content=scroll_down_btn, alignment=ft.Alignment.BOTTOM_CENTER, bottom=10, right=0, left=0),
         ],
         expand=True,
@@ -315,6 +372,7 @@ def create_chat_view(
 
         _save_to_db()
         sidebar_render()
+        _sync_empty()
         page.update()
 
     return view

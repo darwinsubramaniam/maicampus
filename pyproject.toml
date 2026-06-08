@@ -12,6 +12,7 @@ dependencies = [
     "chromadb>=1.5.9",
     "flet>=0.85.3",
     "google-genai>=2.8.0",
+    "httpx>=0.27",
     "mem0ai>=2.0.4",
     "openai>=2.41.0",
     "tinydb>=4.8.2",
@@ -19,6 +20,13 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "flet-cli>=0.85.3",
+    "flet-desktop>=0.85.3",
+    "flet-web>=0.85.3",
+]
+# Set used by Dockerfile.web to serve the app as a website. flet-desktop is required because
+# `flet run` imports it even in --web mode (it is never used to open a desktop window here).
+web = [
     "flet-cli>=0.85.3",
     "flet-desktop>=0.85.3",
     "flet-web>=0.85.3",
@@ -39,6 +47,9 @@ venv = ".venv"
 pythonVersion = "3.14"
 typeCheckingMode = "standard"
 reportMissingImports = "warning"
+# mock_server is a separate FastAPI/Postgres service with its own deps (mock_server/requirements.txt);
+# it runs in Docker, not in the app venv, so don't type-check it against the app environment.
+exclude = ["mock_server", "**/__pycache__", "**/node_modules", "**/.*", ".venv"]
 
 [tool.ruff]
 src = ["src"]
@@ -56,19 +67,28 @@ select = [
     "UP",    # pyupgrade
     "B",     # flake8-bugbear
     "SIM",   # flake8-simplify
-    "TCH",   # flake8-type-checking
+    "TC",    # flake8-type-checking
     "RUF",   # ruff-specific rules
 ]
 ignore = [
     "E731",  # allow lambda assignments — used for lightweight callbacks
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# The mock backend uses FastAPI idioms ruff would otherwise fight:
+# - TC*: FastAPI/SQLAlchemy evaluate annotations at runtime (no TYPE_CHECKING blocks).
+# - B008: Depends()/Query() in argument defaults is the FastAPI dependency-injection pattern.
+"mock_server/**" = ["TC001", "TC002", "TC003", "B008"]
+
 [tool.ruff.lint.isort]
 known-first-party = [
     "ai_providers",
     "bootstrap",
+    "campus_api",
     "campus_calendar",
     "chat",
+    "constants",
+    "facility_booking",
     "memory",
     "planner",
     "settings",

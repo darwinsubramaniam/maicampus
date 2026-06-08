@@ -1,0 +1,19 @@
+# Build context hygiene for Dockerfile.web (repo-root context).
+.venv/
+.git/
+.github/
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+mock_server/
+docs/
+*.pdf
+*.excalidraw
+*.md
+!README.md
+.vscode/
+.idea/

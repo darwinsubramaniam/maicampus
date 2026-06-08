@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import flet as ft
 
+from ui import FONT_DISPLAY
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -24,7 +26,13 @@ def create_wizard(page: ft.Page, step_defs: list[dict], on_finish: Callable) -> 
     """
     current_step = {"index": 0}
 
-    step_title = ft.Text("", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SURFACE)
+    step_title = ft.Text(
+        "",
+        size=30,
+        weight=ft.FontWeight.W_700,
+        font_family=FONT_DISPLAY,
+        color=ft.Colors.ON_SURFACE,
+    )
     step_subtitle = ft.Text("", size=14, color=ft.Colors.ON_SURFACE_VARIANT)
     step_body = ft.Container(expand=True)
     step_indicator = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)

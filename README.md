@@ -144,6 +144,7 @@ Tool definitions are provider-agnostic and automatically converted to the correc
 
 - Python 3.14+
 - [uv](https://docs.astral.sh/uv/) package manager
+- [Docker](https://docs.docker.com/) + Docker Compose (for the mock campus backend)
 
 ### Install & Run
 
@@ -158,6 +159,30 @@ uv sync
 # Run the app (desktop with hot reload)
 uv run flet run
 ```
+
+### Run with Docker Compose (mock backend + web app)
+
+The University Knowledge Base and Facility Booking features call an external mock backend (FastAPI +
+Postgres 18), and the whole app can be served as a website. All three run via Docker Compose:
+
+```bash
+docker compose up --build          # full stack
+docker compose up --build db api   # backend only (no web app)
+```
+
+| Service | URL | Role |
+|---|---|---|
+| `webapp` | http://localhost:8550 | MAiCampus served as a website (Flet) |
+| `api` | http://localhost:28000 (docs at `/docs`) | Mock UKB + Facility Booking API |
+| `db` | _internal only_ | Postgres 18 (no host port — shared-server friendly) |
+
+- Seeded with a UTM/Malaysian dataset anchored to the assignment's FOL scenario
+  (MECS0033 · Darwin · Mon 09:00–11:00 · Room N28 · Dr Shafaatunnur).
+- The Docker web app reaches the API over the compose network (`MAICAMPUS_API_BASE=http://api:8000`).
+  A locally-run app uses `http://localhost:28000` by default (override with `MAICAMPUS_API_BASE`).
+  When the backend is down, UKB/booking features degrade gracefully with a friendly message.
+
+See [`mock_server/`](mock_server/), [`Dockerfile.web`](Dockerfile.web) and [`docker-compose.yml`](docker-compose.yml).
 
 ### Other Platforms
 
@@ -183,6 +208,7 @@ src/
   theme.py                   # Material 3 teal theme (light/dark)
   notifications.py           # In-app notification center
   prefs.py                   # SharedPreferences helper
+  campus_api.py              # httpx client for the mock backend (UKB + Facility Booking)
 
   chat/                      # AI Chat Module
     chat_core.py             # ChatEngine — streaming, tool calling, system prompts
@@ -200,10 +226,15 @@ src/
     event_form.py            # Add/edit event dialog
     calendar_memory.py       # AI memory integration for events
 
+  facility_booking/          # Facility Booking Module (Flow 6)
+    __init__.py              # Search → availability + calendar-conflict check → confirm
+
   tools/                     # AI Tool Calling System
     converters.py            # Provider-agnostic to OpenAI/Claude/Gemini format
     calendar_tools.py        # Calendar event tools
     planner_tools.py         # Task management and competency tools
+    ukb_tools.py             # University Knowledge Base tools + timetable sync
+    facility_tools.py        # Facility search / availability / booking (conflict chain)
 
   planner/                   # Smart Planner
     background.py            # Background scanner (5-hour interval + on startup)
@@ -215,6 +246,7 @@ src/
     profile_settings.py      # Name, email, profile picture
     appearance_settings.py   # Theme mode toggle
     ai_settings.py           # Provider, API key, model
+    knowledge_settings.py    # Sync timetable from the Knowledge Base
     planner_settings.py      # Manual scan trigger
     reset_settings.py        # App reset with confirmation
 
@@ -222,6 +254,16 @@ src/
     wizard.py                # Generic step-by-step wizard engine
     pipeline.py              # Step ordering (plugin-based)
     steps/                   # Individual onboarding steps
+
+mock_server/                 # Mock UTM backend (FastAPI + Postgres 18, run via Docker Compose)
+  app.py                     # FastAPI app: lifespan creates tables + seeds
+  db.py                      # SQLAlchemy engine / session
+  models.py                  # ORM: lecturers, students, courses, timetable, enrollments, clubs, facilities, bookings
+  schemas.py                 # Pydantic request/response schemas
+  seed.py                    # UTM/Malaysian seed (anchored to the FOL scenario)
+  routers/ukb.py             # /ukb/* — courses, timetables, clubs, facility metadata
+  routers/facility.py        # /facility/* — search, availability, booking (409 on conflict)
+docker-compose.yml           # postgres:18 + api services
 ```
 
 ## Tech Stack

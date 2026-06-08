@@ -173,7 +173,7 @@ def show_event_dialog(page: ft.Page, on_save: Callable, event: dict | None = Non
         try:
             sh, sm = map(int, start_time.value.strip().split(":"))
             eh, em = map(int, end_time.value.strip().split(":"))
-        except ValueError, AttributeError:
+        except (ValueError, AttributeError):
             error_text.value = "Invalid time format. Use HH:MM."
             error_text.visible = True
             page.update()

@@ -15,7 +15,7 @@ def _handle_create_event(args: dict) -> dict:
     try:
         sh, sm = map(int, st.split(":"))
         eh, em = map(int, et.split(":"))
-    except ValueError, AttributeError:
+    except (ValueError, AttributeError):
         return {"error": "Invalid time format. Use HH:MM."}
 
     start_dt = datetime(int(d[:4]), int(d[5:7]), int(d[8:10]), sh, sm, tzinfo=UTC)

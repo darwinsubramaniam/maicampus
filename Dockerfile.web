@@ -1,0 +1,25 @@
+# MAiCampus Flet app served as a website (Python runs server-side; browser is a thin client).
+# Built from the repo root context. See the `webapp` service in docker-compose.yml.
+FROM python:3.14-slim
+
+# uv for fast, lockfile-pinned installs.
+RUN pip install --no-cache-dir uv
+
+WORKDIR /app
+
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_COMPILE_BYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install dependencies only (no desktop client). The project itself has no build-system,
+# so we run the source directly rather than installing it as a package.
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev --group web --no-install-project
+
+# App source.
+COPY src ./src
+
+EXPOSE 8550
+
+# `--host "*"` listens on all interfaces; the API base is injected via MAICAMPUS_API_BASE.
+CMD ["uv", "run", "--no-sync", "flet", "run", "src", "--web", "--host", "*", "--port", "8550"]

@@ -10,6 +10,7 @@ from campus_calendar.day_detail import create_day_detail
 from campus_calendar.event_form import show_event_dialog
 from campus_calendar.month_grid import create_month_grid
 from memory import MemoryManager as MemoryManager
+from ui import view_header
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -79,25 +80,12 @@ def create_calendar_view(
         icon=ft.Icons.ADD_ROUNDED,
         tooltip="Add event",
         on_click=on_add_click,
-        icon_color=ft.Colors.TEAL,
+        icon_color=ft.Colors.PRIMARY,
         bgcolor=ft.Colors.PRIMARY_CONTAINER,
         style=ft.ButtonStyle(shape=ft.CircleBorder()),
     )
 
-    header = ft.Container(
-        content=ft.Row(
-            controls=[
-                ft.Icon(ft.Icons.CALENDAR_MONTH, color=ft.Colors.TEAL, size=20),
-                ft.Text("Calendar", size=16, weight=ft.FontWeight.W_600, color=ft.Colors.TEAL_700),
-                ft.Container(expand=True),
-                add_btn,
-            ],
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=8,
-        ),
-        padding=ft.Padding(left=16, right=8, top=6, bottom=6),
-        border=ft.Border(bottom=ft.BorderSide(1, ft.Colors.with_opacity(0.1, ft.Colors.ON_SURFACE))),
-    )
+    header = view_header("Calendar", ft.Icons.CALENDAR_MONTH, trailing=[add_btn])
 
     # Layout: grid on left, detail on right
     body = ft.Row(

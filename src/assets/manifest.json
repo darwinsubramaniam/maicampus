@@ -1,0 +1,35 @@
+{
+  "name": "MAI Campus",
+  "short_name": "MAI Campus",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0F1514",
+  "theme_color": "#00796B",
+  "description": "Your AI-powered student companion for campus life.",
+  "orientation": "natural",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
