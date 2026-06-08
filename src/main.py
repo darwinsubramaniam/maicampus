@@ -91,16 +91,34 @@ def main(page: ft.Page):
                     ft.Text("MAI Campus", size=30, weight=ft.FontWeight.W_700, color=ft.Colors.ON_SURFACE),
                     ft.Container(height=6),
                     ft.Text(
-                        "Your AI student companion. Sign in to continue.",
+                        "Your AI student companion. Sign in with your UTM account to continue.",
                         size=14,
+                        text_align=ft.TextAlign.CENTER,
                         color=ft.Colors.ON_SURFACE_VARIANT,
                     ),
                     ft.Container(height=28),
                     ft.FilledButton(
-                        "Sign in with Google",
-                        icon=ft.Icons.LOGIN,
+                        content=ft.Row(
+                            [
+                                ft.Image(src="google_g.svg", width=20, height=20),
+                                ft.Text(
+                                    "Sign in with UTM Student Google Account",
+                                    weight=ft.FontWeight.W_600,
+                                ),
+                            ],
+                            tight=True,
+                            spacing=12,
+                            alignment=ft.MainAxisAlignment.CENTER,
+                        ),
                         on_click=_do_login,
-                        style=ft.ButtonStyle(padding=ft.Padding(24, 18, 24, 18)),
+                        # Google-style button: white surface, subtle border, brand logo.
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.WHITE,
+                            color="#3C4043",
+                            padding=ft.Padding(22, 18, 24, 18),
+                            shape=ft.RoundedRectangleBorder(radius=10),
+                            side=ft.BorderSide(1, ft.Colors.with_opacity(0.2, ft.Colors.ON_SURFACE)),
+                        ),
                     ),
                 ],
             ),
