@@ -40,13 +40,13 @@ def create_knowledge_settings(page: ft.Page) -> ft.Container:
 
     def _apply_health(icon: ft.Icon, detail: ft.Text, result: dict) -> None:
         if result.get("ok"):
-            icon.name = ft.Icons.CHECK_CIRCLE
+            icon.icon = ft.Icons.CHECK_CIRCLE
             icon.color = ft.Colors.TEAL
             latency = result.get("latency_ms")
             detail.value = f"Online · {latency} ms" if latency is not None else "Online"
             detail.color = ft.Colors.TEAL
         else:
-            icon.name = ft.Icons.ERROR
+            icon.icon = ft.Icons.ERROR
             icon.color = ft.Colors.ERROR
             detail.value = result.get("detail", "Offline")
             detail.color = ft.Colors.ERROR
@@ -54,7 +54,7 @@ def create_knowledge_settings(page: ft.Page) -> ft.Container:
     def do_health_check(e):
         health_btn_text.value = "Checking..."
         for icon, detail in ((ukb_icon, ukb_detail), (fac_icon, fac_detail)):
-            icon.name = ft.Icons.RADIO_BUTTON_UNCHECKED
+            icon.icon = ft.Icons.RADIO_BUTTON_UNCHECKED
             icon.color = ft.Colors.ON_SURFACE_VARIANT
             detail.value = "Checking..."
             detail.color = ft.Colors.ON_SURFACE_VARIANT
