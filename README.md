@@ -156,7 +156,7 @@ cd maicampus
 uv sync
 
 # Run the app (desktop with hot reload)
-uv run flet run --recursive src
+uv run flet run
 ```
 
 ### Other Platforms

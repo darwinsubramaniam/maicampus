@@ -167,3 +167,4 @@ storage/
 
 # UV lock file
 uv.lock
+.DS_Store

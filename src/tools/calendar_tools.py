@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 
 from campus_calendar.calendar_memory import index_event_to_memory
 from campus_calendar.event_model import EVENT_COLORS, EVENT_LABELS, event_time_str, event_type_from_str
-from services import calendar_store as _store
+from services import get_calendar_store as _get_store
 from services import get_memory_manager as _get_mgr
 from tools import ToolDefinition, register
 
@@ -37,7 +37,7 @@ def _handle_create_event(args: dict) -> dict:
         "color": EVENT_COLORS.get(et_enum, EVENT_COLORS[et_enum]),
     }
 
-    event = _store.create_event(event_data)
+    event = _get_store().create_event(event_data)
     index_event_to_memory(event, _get_mgr())
 
     return {
@@ -50,7 +50,7 @@ def _handle_create_event(args: dict) -> dict:
 
 def _handle_get_upcoming(args: dict) -> dict:
     days = int(args.get("days", 7))
-    upcoming = _store.get_upcoming_events(days=days)
+    upcoming = _get_store().get_upcoming_events(days=days)
 
     events = []
     for d, event in upcoming:
@@ -69,7 +69,7 @@ def _handle_get_upcoming(args: dict) -> dict:
 
 def _handle_get_events_for_date(args: dict) -> dict:
     target = date.fromisoformat(args.get("date", date.today().isoformat()))
-    events_list = _store.get_events_for_date(target)
+    events_list = _get_store().get_events_for_date(target)
 
     events = []
     for event in events_list:

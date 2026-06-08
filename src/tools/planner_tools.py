@@ -3,7 +3,7 @@ import threading
 from datetime import UTC, date, datetime
 
 from campus_calendar.event_model import EVENT_LABELS, event_type_from_str
-from services import calendar_store as _store
+from services import get_calendar_store as _get_store
 from services import get_memory_manager as _get_mgr
 from tools import ToolDefinition, register
 
@@ -13,7 +13,7 @@ def _handle_update_task_status(args: dict) -> dict:
     if not event_id:
         return {"error": "event_id is required"}
 
-    event = _store.get_event(event_id)
+    event = _get_store().get_event(event_id)
     if not event:
         return {"error": f"Event {event_id} not found"}
 
@@ -22,7 +22,7 @@ def _handle_update_task_status(args: dict) -> dict:
     if hours is not None:
         update["actual_hours_spent"] = float(hours)
 
-    _store.update_event(event_id, update)
+    _get_store().update_event(event_id, update)
     return {"success": True, "event_id": event_id, "status": update["status"]}
 
 
@@ -31,14 +31,14 @@ def _handle_log_completion(args: dict) -> dict:
     if not event_id:
         return {"error": "event_id is required"}
 
-    event = _store.get_event(event_id)
+    event = _get_store().get_event(event_id)
     if not event:
         return {"error": f"Event {event_id} not found"}
 
     actual_hours = float(args.get("actual_hours", 0))
     now = datetime.now(UTC).isoformat()
 
-    _store.update_event(
+    _get_store().update_event(
         event_id,
         {
             "status": "completed",
@@ -88,7 +88,7 @@ def _handle_log_completion(args: dict) -> dict:
 
 def _handle_get_priority_tasks(args: dict) -> dict:
     days = int(args.get("days", 14))
-    tasks = _store.get_actionable_tasks(days=days)
+    tasks = _get_store().get_actionable_tasks(days=days)
 
     mgr = _get_mgr()
     scored = []

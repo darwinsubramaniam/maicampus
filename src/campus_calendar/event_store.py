@@ -9,7 +9,7 @@ from constants import CALENDAR_DB_PATH
 
 _DB_PATH = CALENDAR_DB_PATH
 
-
+# input = user and uniactivitymanager(service)
 class CalendarEventStore:
     def __init__(self):
         _DB_PATH.parent.mkdir(parents=True, exist_ok=True)

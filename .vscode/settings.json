@@ -7,6 +7,5 @@
       "source.organizeImports.ruff": "explicit"
     }
   },
-  "ruff.configuration": "pyproject.toml",
-  "ruff.lint.run": "onType"
+  "ruff.configuration": "pyproject.toml"
 }

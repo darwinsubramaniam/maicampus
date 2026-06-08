@@ -18,6 +18,10 @@ calendar_store = CalendarEventStore()
 _memory_getter: Callable[[], MemoryManager | None] = lambda: None
 
 
+def get_calendar_store() -> CalendarEventStore:
+    return calendar_store
+
+
 def set_memory_getter(fn: Callable[[], MemoryManager | None]):
     global _memory_getter
     _memory_getter = fn

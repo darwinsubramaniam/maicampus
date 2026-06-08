@@ -24,12 +24,13 @@ def create_calendar_view(
     get_calendar_context_fn: Callable | None = None,
     on_tool_executed: Callable | None = None,
 ) -> ft.Stack:
-    from services import calendar_store as store
+    from services import get_calendar_store
+
     selected_date = {"value": date.today()}
 
     def _refresh_all():
         grid_render(selected=selected_date["value"])
-        events = store.get_events_for_date(selected_date["value"])
+        events = get_calendar_store().get_events_for_date(selected_date["value"])
         detail_render(selected_date["value"], events)
         page.update()
 
@@ -38,6 +39,7 @@ def create_calendar_view(
         _refresh_all()
 
     def on_event_save(data: dict):
+        store = get_calendar_store()
         event_id = data.pop("id", None)
         if event_id:
             store.update_event(event_id, data)
@@ -56,7 +58,7 @@ def create_calendar_view(
         show_event_dialog(page, on_event_save, event)
 
     def on_event_delete(event_id: str):
-        store.delete_event(event_id)
+        get_calendar_store().delete_event(event_id)
         _refresh_all()
 
     def on_add_click(e):
@@ -69,7 +71,7 @@ def create_calendar_view(
 
     grid_container, grid_render = create_month_grid(
         on_day_select=on_day_select,
-        get_events_in_range=store.get_events_in_range,
+        get_events_in_range=lambda s, e: get_calendar_store().get_events_in_range(s, e),
     )
 
     # Header
@@ -109,7 +111,7 @@ def create_calendar_view(
     )
 
     # Initial load
-    events = store.get_events_for_date(selected_date["value"])
+    events = get_calendar_store().get_events_for_date(selected_date["value"])
     detail_render(selected_date["value"], events)
 
     calendar_content = ft.Column(
