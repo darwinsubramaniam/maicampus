@@ -1,0 +1,123 @@
+/* Print stylesheet for the MAI Campus student user manual (WeasyPrint). */
+
+:root {
+  --teal: #00897b;
+  --teal-dark: #00695c;
+  --ink: #263238;
+  --muted: #607d8b;
+  --line: #cfd8dc;
+  --bg-soft: #f1f6f5;
+}
+
+/* ----------------------------------------------------------------- page setup */
+@page {
+  size: A4;
+  margin: 20mm 18mm 22mm 18mm;
+  @bottom-left {
+    content: "MAI Campus User Manual";
+    font: 8pt -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #90a4ae;
+  }
+  @bottom-right {
+    content: counter(page);
+    font: 9pt -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--muted);
+  }
+}
+
+/* Cover has no running header/footer and no margin. */
+@page cover {
+  margin: 0;
+  @bottom-left { content: ""; }
+  @bottom-right { content: ""; }
+}
+
+/* ----------------------------------------------------------------- base text */
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  color: var(--ink);
+  font-size: 10.5pt;
+  line-height: 1.5;
+}
+
+h1, h2, h3 { color: var(--teal-dark); line-height: 1.25; }
+h2 {
+  font-size: 18pt;
+  border-bottom: 2px solid var(--teal);
+  padding-bottom: 4px;
+  margin-top: 0;
+  break-before: page;      /* each major section starts on a fresh page */
+  break-after: avoid;
+}
+h3 { font-size: 13pt; margin-top: 1.4em; break-after: avoid; }
+p { margin: 0.5em 0; }
+a { color: var(--teal); text-decoration: none; }
+strong { color: var(--teal-dark); }
+
+/* ----------------------------------------------------------------- cover */
+.cover {
+  page: cover;
+  break-after: page;
+  height: 297mm;
+  box-sizing: border-box;
+  padding: 34mm 24mm 24mm;
+  background: linear-gradient(160deg, #e0f2f1 0%, #ffffff 55%);
+  display: flex;
+  flex-direction: column;
+}
+.cover .eyebrow {
+  font-size: 11pt; letter-spacing: 3px; text-transform: uppercase;
+  color: var(--teal); font-weight: 700; margin-bottom: 10mm;
+}
+.cover h1 {
+  font-size: 40pt; margin: 0 0 6mm; color: var(--teal-dark); line-height: 1.1;
+}
+.cover .tagline { font-size: 14pt; color: var(--muted); margin: 0 0 14mm; max-width: 130mm; }
+.cover .shot {
+  width: 150mm; align-self: center; border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 26px rgba(0,0,0,.16); margin-top: auto;
+}
+.cover .meta { margin-top: 10mm; color: var(--muted); font-size: 10pt; }
+
+/* ----------------------------------------------------------------- figures */
+figure {
+  margin: 1.2em 0;
+  break-inside: avoid;
+}
+figure img {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 3px 10px rgba(0,0,0,.10);
+}
+figcaption {
+  margin-top: 6px; font-size: 9pt; color: var(--muted); text-align: center; font-style: italic;
+}
+
+/* ----------------------------------------------------------------- step lists */
+ol { padding-left: 0; counter-reset: step; list-style: none; }
+ol > li {
+  position: relative; padding: 2px 0 2px 30px; margin: 6px 0; break-inside: avoid;
+}
+ol > li::before {
+  counter-increment: step; content: counter(step);
+  position: absolute; left: 0; top: 1px;
+  width: 21px; height: 21px; border-radius: 50%;
+  background: var(--teal); color: #fff; font-weight: 700; font-size: 11px;
+  /* line-height == height reliably vertically-centers single-line text in WeasyPrint
+     (its flexbox centering on pseudo-elements is unreliable). */
+  text-align: center; line-height: 21px;
+}
+ul { padding-left: 20px; }
+ul li { margin: 4px 0; }
+
+/* ----------------------------------------------------------------- callout box */
+.note {
+  background: var(--bg-soft); border-left: 4px solid var(--teal);
+  border-radius: 6px; padding: 10px 14px; margin: 1em 0; font-size: 10pt;
+  break-inside: avoid;
+}
+.note strong { color: var(--teal-dark); }
+
+/* The first section after the cover shouldn't add a second forced break. */
+h2.no-break { break-before: avoid; }

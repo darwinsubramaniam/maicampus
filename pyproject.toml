@@ -22,6 +22,12 @@ dev = [
     "flet-desktop>=0.85.3",
     "flet-web>=0.85.3",
 ]
+docs = [
+    "markdown>=3.10.2",
+    "playwright>=1.60.0",
+    "pymdown-extensions>=11.0",
+    "weasyprint>=69.0",
+]
 # Set used by Dockerfile.web to serve the app as a website. flet-desktop is required because
 # `flet run` imports it even in --web mode (it is never used to open a desktop window here).
 web = [

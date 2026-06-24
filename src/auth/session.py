@@ -37,12 +37,15 @@ def _find_student_by_email(email: str) -> str | None:
     # fresh DB (the server raises NotFoundError, unlike the embedded engine). Treat that as "no
     # match" so login never fails on the lookup.
     try:
+        # Return the bare matric (e.g. MEC255043), not the record id (student:MEC255043) —
+        # `meta::id()` strips the table prefix. The bare matric is what booking/UKB calls match on.
         rows = get_db().query(
-            "SELECT id FROM student WHERE email = $email LIMIT 1", {"email": email}
+            "SELECT meta::id(id) AS matric FROM student WHERE email = $email LIMIT 1",
+            {"email": email},
         )
     except Exception:
         return None
-    return str(rows[0]["id"]) if rows else None
+    return str(rows[0]["matric"]) if rows else None
 
 
 def resolve_user_context(user: User) -> UserContext:

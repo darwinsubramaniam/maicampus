@@ -125,7 +125,10 @@ def create_booking(payload: BookingCreate) -> BookingOut:
         {
             "rid": thing("booking", next_id),
             "data": {
-                "student_id": payload.student_id,
+                # Store the matric upper-cased so it matches `list_bookings`, which queries
+                # with `student_id.upper()`. Without this the two casings never compare equal
+                # and a student's bookings silently read back empty.
+                "student_id": payload.student_id.upper(),
                 "facility_id": facility["id"],
                 "date": payload.date,
                 "start_time": payload.start_time,
