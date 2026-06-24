@@ -361,13 +361,23 @@ def create_facility_view(
 
         def _work():
             res = tools.execute("list_my_bookings", {}, user_ctx)
-            if "error" in res:
-                bookings_list.controls.clear()
-                bookings_list.controls.append(_banner(res["error"], ft.Colors.ORANGE, ft.Icons.CLOUD_OFF))
-                page.update()
-                return
-            state["bookings"] = res.get("bookings", [])
-            _render_bookings()
+
+            async def _apply():
+                # Repaint on the page's event loop. page.update() called directly from this
+                # worker thread does not reliably flush — after a tab switch the list would stay
+                # blank until a full page reload. run_task marshals the repaint onto the loop
+                # (asyncio.run_coroutine_threadsafe), the same pattern chat streaming uses.
+                if "error" in res:
+                    bookings_list.controls.clear()
+                    bookings_list.controls.append(
+                        _banner(res["error"], ft.Colors.ORANGE, ft.Icons.CLOUD_OFF)
+                    )
+                    page.update()
+                else:
+                    state["bookings"] = res.get("bookings", [])
+                    _render_bookings()
+
+            page.run_task(_apply)
 
         threading.Thread(target=_work, daemon=True).start()
 
