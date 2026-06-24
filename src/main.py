@@ -79,6 +79,18 @@ def main(page: ft.Page):
                     icon=ft.Icons.EVENT_AVAILABLE,
                     color=ft.Colors.TEAL,
                 )
+            elif name == "cancel_booking" and result.get("cancelled"):
+                notif_center.add(
+                    f"Cancelled booking #{result.get('booking_id')}",
+                    icon=ft.Icons.EVENT_BUSY,
+                    color=ft.Colors.ORANGE,
+                )
+            elif name == "reschedule_booking" and result.get("rescheduled"):
+                notif_center.add(
+                    f"Rescheduled {result.get('facility', 'booking')} · {result.get('date', '')} {result.get('time', '')}",
+                    icon=ft.Icons.EVENT_REPEAT,
+                    color=ft.Colors.TEAL,
+                )
 
         chat_view = create_chat_view(
             page,

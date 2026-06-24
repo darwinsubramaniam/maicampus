@@ -67,10 +67,32 @@ def create_chat_view(
 
     # --- Tool execution notification ---
     def _on_tool_executed(name, result):
-        if name == "create_calendar_event" and result.get("success") and notifications:
+        if not notifications:
+            return
+        if name == "create_calendar_event" and result.get("success"):
             notifications.add(
                 f"Added to calendar: {result.get('title', 'Event')}",
                 icon=ft.Icons.CALENDAR_MONTH,
+                color=ft.Colors.TEAL,
+            )
+        elif name == "book_facility" and result.get("booked"):
+            notifications.add(
+                f"Booked {result.get('facility', 'facility')} · "
+                f"{result.get('date', '')} {result.get('time', '')}",
+                icon=ft.Icons.EVENT_AVAILABLE,
+                color=ft.Colors.TEAL,
+            )
+        elif name == "cancel_booking" and result.get("cancelled"):
+            notifications.add(
+                f"Cancelled booking #{result.get('booking_id')}",
+                icon=ft.Icons.EVENT_BUSY,
+                color=ft.Colors.ORANGE,
+            )
+        elif name == "reschedule_booking" and result.get("rescheduled"):
+            notifications.add(
+                f"Rescheduled {result.get('facility', 'booking')} · "
+                f"{result.get('date', '')} {result.get('time', '')}",
+                icon=ft.Icons.EVENT_REPEAT,
                 color=ft.Colors.TEAL,
             )
 

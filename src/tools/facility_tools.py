@@ -54,6 +54,32 @@ def _calendar_clash(target: date, start_time: str, end_time: str) -> dict | None
     return None
 
 
+def _facility_name_map() -> dict[str, str]:
+    """Map facility_id → friendly name (bookings only carry the id)."""
+    facilities = campus_api.facility_list()
+    if isinstance(facilities, dict):  # {"error": ...}
+        return {}
+    return {f["id"]: f["name"] for f in facilities}
+
+
+def _find_booking_event(booking_id: int) -> dict | None:
+    """Find the calendar event mirrored from a booking via its '#<id> at' description marker."""
+    needle = f"#{booking_id} at "
+    for event in _get_store().get_all_events():
+        if needle in (event.get("description") or ""):
+            return event
+    return None
+
+
+def _delete_booking_event(booking_id: int) -> bool:
+    """Remove the booking's mirrored calendar event, if one exists. Returns True if removed."""
+    event = _find_booking_event(booking_id)
+    if event is None:
+        return False
+    _get_store().delete_event(event["id"])
+    return True
+
+
 def _handle_search_facilities(args: dict) -> dict:
     facilities = campus_api.facility_list(type=args.get("type"))
     if (err := _err(facilities)) is not None:
@@ -170,6 +196,131 @@ def _handle_book_facility(args: dict) -> dict:
     }
 
 
+def _handle_list_my_bookings(args: dict) -> dict:
+    bookings = campus_api.facility_bookings()
+    if (err := _err(bookings)) is not None:
+        return err
+    names = _facility_name_map()
+    items = [
+        {
+            "booking_id": b["id"],
+            "facility_id": b["facility_id"],
+            "facility": names.get(b["facility_id"], b["facility_id"]),
+            "date": b["date"],
+            "time": f"{b['start_time']}-{b['end_time']}",
+        }
+        for b in bookings
+    ]
+    items.sort(key=lambda x: (x["date"], x["time"]))
+    return {
+        "bookings": items,
+        "count": len(items),
+        "message": "You have no facility bookings yet." if not items else None,
+    }
+
+
+def _coerce_booking_id(raw) -> int | None:
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _handle_cancel_booking(args: dict) -> dict:
+    booking_id = _coerce_booking_id(args.get("booking_id"))
+    if booking_id is None:
+        return {"error": "Provide a numeric booking_id to cancel. Use list_my_bookings to find it."}
+
+    result = campus_api.facility_cancel(booking_id)
+    if (err := _err(result)) is not None:
+        return err
+
+    removed = _delete_booking_event(booking_id)
+    return {
+        "cancelled": True,
+        "success": True,
+        "booking_id": booking_id,
+        "calendar_updated": removed,
+        "message": (
+            f"Cancelled booking #{booking_id}."
+            + (" Removed it from your calendar." if removed else "")
+        ),
+    }
+
+
+def _handle_reschedule_booking(args: dict) -> dict:
+    booking_id = _coerce_booking_id(args.get("booking_id"))
+    if booking_id is None:
+        return {"error": "Provide a numeric booking_id. Use list_my_bookings to find it."}
+
+    new_start = args.get("start_time", "").strip()
+    new_end = args.get("end_time", "").strip()
+    if not (new_start and new_end):
+        return {"error": "Provide the new start_time and end_time (HH:MM) for the reschedule."}
+
+    # Look up the current booking for its facility, the default date, and rollback details.
+    bookings = campus_api.facility_bookings()
+    if (err := _err(bookings)) is not None:
+        return err
+    current = next((b for b in bookings if b["id"] == booking_id), None)
+    if current is None:
+        return {"error": f"Booking #{booking_id} isn't in your active bookings. Use list_my_bookings."}
+
+    facility_id = current["facility_id"]
+    new_date = args.get("date", "").strip() or current["date"]
+
+    # Cancel the old slot first so it frees up (and its calendar mirror is removed), then book the
+    # new slot through the same Flow-6 chain (server availability + calendar clash + confirm + mirror).
+    cancel = campus_api.facility_cancel(booking_id)
+    if (err := _err(cancel)) is not None:
+        return err
+    _delete_booking_event(booking_id)
+
+    new_booking = _handle_book_facility(
+        {"facility_id": facility_id, "date": new_date, "start_time": new_start, "end_time": new_end}
+    )
+    if new_booking.get("booked"):
+        return {
+            "rescheduled": True,
+            "success": True,
+            "booking_id": new_booking["booking_id"],
+            "previous_booking_id": booking_id,
+            "facility": new_booking["facility"],
+            "date": new_date,
+            "time": f"{new_start}-{new_end}",
+            "message": (
+                f"Rescheduled to {new_booking['facility']} on {new_date} "
+                f"from {new_start} to {new_end}. Your calendar is updated."
+            ),
+        }
+
+    # The new slot was unavailable or clashed — roll back to the original booking so nothing is lost.
+    rollback = _handle_book_facility(
+        {
+            "facility_id": facility_id,
+            "date": current["date"],
+            "start_time": current["start_time"],
+            "end_time": current["end_time"],
+        }
+    )
+    kept = bool(rollback.get("booked"))
+    return {
+        "rescheduled": False,
+        "conflict": new_booking.get("conflict"),
+        "booking_id": rollback.get("booking_id", booking_id) if kept else booking_id,
+        "suggested_slots": new_booking.get("suggested_slots", []),
+        "message": (
+            f"Couldn't reschedule — {new_booking.get('message', 'the new slot is unavailable')} "
+            + (
+                f"Your original booking ({current['date']} "
+                f"{current['start_time']}-{current['end_time']}) is unchanged."
+                if kept
+                else "Please re-check your bookings."
+            )
+        ),
+    }
+
+
 register(
     ToolDefinition(
         name="search_facilities",
@@ -230,5 +381,70 @@ register(
             "required": ["facility_id", "date", "start_time", "end_time"],
         },
         handler=_handle_book_facility,
+    )
+)
+
+register(
+    ToolDefinition(
+        name="list_my_bookings",
+        description=(
+            "List the student's current (confirmed) facility bookings, each with its booking_id,"
+            " facility, date and time. Use this to show what they have booked and to find a"
+            " booking_id before cancelling or rescheduling."
+        ),
+        parameters={"type": "object", "properties": {}, "required": []},
+        handler=_handle_list_my_bookings,
+    )
+)
+
+register(
+    ToolDefinition(
+        name="cancel_booking",
+        description=(
+            "Cancel one of the student's facility bookings by its booking_id (from"
+            " list_my_bookings). Frees the slot on the server and removes the mirrored calendar"
+            " event. Confirm with the student before cancelling."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "booking_id": {
+                    "type": "integer",
+                    "description": "The booking id to cancel (from list_my_bookings).",
+                }
+            },
+            "required": ["booking_id"],
+        },
+        handler=_handle_cancel_booking,
+    )
+)
+
+register(
+    ToolDefinition(
+        name="reschedule_booking",
+        description=(
+            "Move an existing facility booking to a new time (and optionally a new date) on the same"
+            " facility. Identify it by booking_id (from list_my_bookings). Re-checks facility"
+            " availability and the student's calendar for the new slot; if it clashes the original"
+            " booking is kept unchanged and suggested free slots are returned. Confirm the new time"
+            " with the student first."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "booking_id": {
+                    "type": "integer",
+                    "description": "The booking id to reschedule (from list_my_bookings).",
+                },
+                "start_time": {"type": "string", "description": "New start time in HH:MM 24-hour format"},
+                "end_time": {"type": "string", "description": "New end time in HH:MM 24-hour format"},
+                "date": {
+                    "type": "string",
+                    "description": "Optional new date in YYYY-MM-DD; defaults to the booking's current date.",
+                },
+            },
+            "required": ["booking_id", "start_time", "end_time"],
+        },
+        handler=_handle_reschedule_booking,
     )
 )

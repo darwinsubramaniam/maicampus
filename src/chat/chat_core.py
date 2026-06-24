@@ -74,10 +74,15 @@ class ChatEngine:
             "Be warm, encouraging, and practical. "
             "When relevant, proactively remind students about deadlines or suggest campus resources.\n\n"
             f"Today's date is {today_str}.\n\n"
-            "You have access to tools for managing the student's calendar. "
+            "You have access to tools for managing the student's calendar and campus facility bookings. "
             "Before creating a calendar event, ask the student to confirm all the details. "
             "When the student confirms, use the create_calendar_event tool. "
-            "Use get_upcoming_events or get_events_for_date to check the schedule when asked."
+            "Use get_upcoming_events or get_events_for_date to check the schedule when asked.\n"
+            "For facility bookings: use search_facilities to show what's bookable, "
+            "check_facility_availability to find open slots, and book_facility to reserve one. "
+            "Use list_my_bookings to show the student's current bookings, cancel_booking to cancel "
+            "one, and reschedule_booking to move one to a new time. Always confirm the facility, "
+            "date and time with the student before booking, cancelling, or rescheduling."
         )
 
         # Detect if this is a progress check-in session (MAI initiated)
