@@ -11,6 +11,7 @@ from datetime import UTC, date, datetime
 
 import campus_api
 from campus_calendar.calendar_memory import index_event_to_memory
+from campus_calendar.event_model import booking_id_of
 from services import get_calendar_store as _get_store
 from services import get_memory_manager as _get_mgr
 from tools import ToolDefinition, register
@@ -63,10 +64,9 @@ def _facility_name_map() -> dict[str, str]:
 
 
 def _find_booking_event(booking_id: int) -> dict | None:
-    """Find the calendar event mirrored from a booking via its '#<id> at' description marker."""
-    needle = f"#{booking_id} at "
+    """Find the calendar event mirrored from a booking by its stored ``booking_id`` link."""
     for event in _get_store().get_all_events():
-        if needle in (event.get("description") or ""):
+        if booking_id_of(event) == booking_id:
             return event
     return None
 
@@ -178,6 +178,8 @@ def _handle_book_facility(args: dict) -> dict:
             "end_datetime": end_dt.isoformat(),
             "description": f"Facility booking #{booking['id']} at {facility_name}.",
             "color": _BOOKING_COLOR,
+            "booking_id": booking["id"],
+            "facility_id": facility_id,
         }
     )
     index_event_to_memory(event, _get_mgr())

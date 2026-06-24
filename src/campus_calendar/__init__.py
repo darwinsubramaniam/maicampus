@@ -8,6 +8,7 @@ import flet as ft
 from campus_calendar.calendar_memory import get_upcoming_context_block, index_event_to_memory
 from campus_calendar.day_detail import create_day_detail
 from campus_calendar.event_form import show_event_dialog
+from campus_calendar.event_model import booking_id_of
 from campus_calendar.month_grid import create_month_grid
 from memory import MemoryManager as MemoryManager
 from ui import view_header
@@ -27,6 +28,7 @@ def create_calendar_view(
     on_tool_executed: Callable | None = None,
     get_session_store: Callable | None = None,
     get_user_context: Callable | None = None,
+    on_navigate_to_booking: Callable | None = None,
     user_name: str = "You",
     user_pic: str = "",
 ) -> ft.Stack:
@@ -68,9 +70,18 @@ def create_calendar_view(
     def on_add_click(e):
         show_event_dialog(page, on_event_save)
 
+    # Booking mirrors can't be edited in place — editing the calendar copy wouldn't reach the
+    # Facility API. Route them to the Booking tab to reschedule/cancel the real booking instead.
+    manage_booking = None
+    if on_navigate_to_booking is not None:
+
+        def manage_booking(event: dict):
+            on_navigate_to_booking(booking_id_of(event), event.get("facility_id"))
+
     detail_container, detail_render = create_day_detail(
         on_edit=on_event_edit,
         on_delete=on_event_delete,
+        on_manage_booking=manage_booking,
     )
 
     grid_container, grid_render = create_month_grid(
@@ -129,7 +140,10 @@ def create_calendar_view(
         )
         stack_controls.append(floating)  # type: ignore[arg-type]
 
-    return ft.Stack(controls=stack_controls, expand=True)  # type: ignore[arg-type]
+    view = ft.Stack(controls=stack_controls, expand=True)  # type: ignore[arg-type]
+    # Re-query the store so the calendar reflects bookings changed elsewhere (Booking tab, chat).
+    view.refresh = _refresh_all  # type: ignore[attr-defined]
+    return view
 
 
 def get_calendar_context(store: CalendarEventStore) -> str:

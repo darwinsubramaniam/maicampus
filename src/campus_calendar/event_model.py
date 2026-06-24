@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, timedelta
 from enum import Enum
 
@@ -92,3 +93,25 @@ def event_type_from_str(s: str) -> EventType:
         return EventType(s)
     except ValueError:
         return EventType.CUSTOM
+
+
+# Description marker used by older booking mirrors that predate the structured ``booking_id``
+# field (e.g. "Facility booking #12 at Library Room A.").
+_BOOKING_DESC_RE = re.compile(r"#(\d+) at ")
+
+
+def booking_id_of(event: dict) -> int | None:
+    """Return the facility booking id this calendar event mirrors, or ``None`` for a normal event.
+
+    Booking mirrors carry a structured ``booking_id`` field; events created before that field
+    existed only encode it in the description, so we fall back to parsing that marker. This is
+    the single source of truth for "is this event a facility booking?" across the UI and tools.
+    """
+    bid = event.get("booking_id")
+    if bid is not None:
+        try:
+            return int(bid)
+        except (TypeError, ValueError):
+            return None
+    match = _BOOKING_DESC_RE.search(event.get("description") or "")
+    return int(match.group(1)) if match else None

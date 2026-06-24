@@ -46,6 +46,10 @@ class CalendarEventStore:
             "recurrence_end_date": data.get("recurrence_end_date"),
             "description": data.get("description", ""),
             "color": data.get("color", ""),
+            # Facility-booking linkage: set on mirrored bookings so the calendar can route edits
+            # to the Booking tab instead of letting an inline edit drift from the Facility API.
+            "booking_id": data.get("booking_id"),
+            "facility_id": data.get("facility_id"),
             "status": data.get("status"),
             "time_estimate_hours": data.get("time_estimate_hours"),
             "actual_hours_spent": data.get("actual_hours_spent"),

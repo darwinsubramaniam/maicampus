@@ -233,6 +233,17 @@ def main(page: ft.Page):
                     color=ft.Colors.TEAL,
                 )
 
+        # Calendar → Booking deep link: a booking's calendar mirror can't be edited in place, so
+        # its "Manage in Booking" action jumps to the Booking tab focused on that booking.
+        def navigate_to_booking(booking_id=None, facility_id=None):
+            if page.navigation_bar:
+                page.navigation_bar.selected_index = 2
+            body.content = facility_view
+            focus = getattr(facility_view, "focus_booking", None)
+            if focus:
+                focus(booking_id)
+            page.update()
+
         chat_view = create_chat_view(
             page,
             get_config,
@@ -253,6 +264,7 @@ def main(page: ft.Page):
             on_tool_executed=_on_tool_executed,
             get_session_store=get_session_store,
             get_user_context=get_user_context,
+            on_navigate_to_booking=navigate_to_booking,
             user_name=auth["name"],
             user_pic=auth["pic"],
         )
@@ -282,14 +294,23 @@ def main(page: ft.Page):
 
         body = ft.Container(content=chat_view, expand=True)
 
+        def _refresh_view(view):
+            # Re-query on show so each tab reflects changes made in another (e.g. a booking
+            # cancelled in the Booking tab is gone from the Calendar; chat bookings show up).
+            refresh = getattr(view, "refresh", None)
+            if refresh:
+                refresh()
+
         def switch_tab(e):
             index = e.control.selected_index
             if index == 0:
                 body.content = chat_view
             elif index == 1:
                 body.content = calendar_view
+                _refresh_view(calendar_view)
             elif index == 2:
                 body.content = facility_view
+                _refresh_view(facility_view)
             else:
                 body.content = settings_view
             page.update()

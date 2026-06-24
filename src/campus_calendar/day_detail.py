@@ -8,13 +8,26 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import date
 
-from campus_calendar.event_model import EVENT_LABELS, event_time_str, event_type_from_str
+from campus_calendar.event_model import (
+    EVENT_LABELS,
+    booking_id_of,
+    event_time_str,
+    event_type_from_str,
+)
 
 
-def create_day_detail(on_edit: Callable, on_delete: Callable) -> tuple[ft.Container, Callable]:
+def create_day_detail(
+    on_edit: Callable,
+    on_delete: Callable,
+    on_manage_booking: Callable | None = None,
+) -> tuple[ft.Container, Callable]:
     """
     Returns (container, refresh(selected_date, events)).
-    on_edit(event) and on_delete(event_id) are callbacks.
+
+    on_edit(event) and on_delete(event_id) are callbacks for regular events. Events that mirror
+    a facility booking can't be meaningfully edited in place (the change wouldn't reach the
+    Facility API), so when ``on_manage_booking`` is provided they get a single "Manage in
+    Booking" action that calls ``on_manage_booking(event)`` instead of edit/delete.
     """
 
     date_header = ft.Text("", size=18, weight=ft.FontWeight.W_600, color=ft.Colors.ON_SURFACE)
@@ -47,6 +60,37 @@ def create_day_detail(on_edit: Callable, on_delete: Callable) -> tuple[ft.Contai
                 color = event.get("color", "#6A1B9A")
                 time_str = event_time_str(event)
 
+                # Booking mirrors are managed in the Booking tab, not edited in place.
+                is_booking = booking_id_of(event) is not None and on_manage_booking is not None
+                if is_booking:
+                    label = "Booking"
+                    actions = [
+                        ft.IconButton(
+                            icon=ft.Icons.OPEN_IN_NEW,
+                            icon_size=16,
+                            icon_color=ft.Colors.PRIMARY,
+                            tooltip="Manage this booking in the Booking tab",
+                            on_click=lambda e, ev=event: on_manage_booking(ev),
+                        ),
+                    ]
+                else:
+                    actions = [
+                        ft.IconButton(
+                            icon=ft.Icons.EDIT_OUTLINED,
+                            icon_size=16,
+                            icon_color=ft.Colors.ON_SURFACE_VARIANT,
+                            tooltip="Edit",
+                            on_click=lambda e, ev=event: on_edit(ev),
+                        ),
+                        ft.IconButton(
+                            icon=ft.Icons.DELETE_OUTLINE,
+                            icon_size=16,
+                            icon_color=ft.Colors.GREY_400,
+                            tooltip="Delete",
+                            on_click=lambda e, eid=event["id"]: on_delete(eid),
+                        ),
+                    ]
+
                 card = ft.Container(
                     content=ft.Row(
                         controls=[
@@ -76,20 +120,7 @@ def create_day_detail(on_edit: Callable, on_delete: Callable) -> tuple[ft.Contai
                                 spacing=2,
                                 expand=True,
                             ),
-                            ft.IconButton(
-                                icon=ft.Icons.EDIT_OUTLINED,
-                                icon_size=16,
-                                icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                                tooltip="Edit",
-                                on_click=lambda e, ev=event: on_edit(ev),
-                            ),
-                            ft.IconButton(
-                                icon=ft.Icons.DELETE_OUTLINE,
-                                icon_size=16,
-                                icon_color=ft.Colors.GREY_400,
-                                tooltip="Delete",
-                                on_click=lambda e, eid=event["id"]: on_delete(eid),
-                            ),
+                            *actions,
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),

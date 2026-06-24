@@ -116,14 +116,25 @@ All config is via environment variables. Docker Compose auto-loads `.env`; `.env
 
 ### Navigation
 - Bottom `NavigationBar`: **Chat · Calendar · Booking · Settings** (compact height for web).
-- Views swap in a single `Container`; chat streaming continues across tabs.
+- Views swap in a single `Container`; chat streaming continues across tabs. Calendar and Booking
+  expose a `refresh()` (re-queries on show) so a change made in one tab (or in chat) is reflected
+  when you switch to the other — no stale data.
 
 ### Facility Booking (Flow 6)
-- **Booking** tab: search facilities → pick date/time → check availability → book.
+- **Booking** tab: search facilities → pick date/time → check availability → book, plus a **My
+  Bookings** panel to **reschedule** or **cancel** existing bookings — driven by the same
+  `reschedule_booking` / `cancel_booking` tools chat uses, so the Facility API and the calendar
+  mirror stay in sync.
 - Conflict detection against BOTH the facility (server) and the user's own calendar; conflicts show a
   red banner + clickable suggested free-slot chips.
 - On confirm: booking saved to the Facility API and mirrored onto the user's calendar + a
   notification. The same `book_facility` tool powers chat, so MAI can book conversationally too.
+
+### Calendar editing & booking linkage
+- Regular calendar events are edited/deleted in place. Events that **mirror a facility booking**
+  (tagged with `booking_id` / `facility_id`; `booking_id_of()` is the single detector) can't be
+  edited in place — that wouldn't reach the Facility API — so they show a **"Manage in Booking"**
+  action that deep-links to the Booking tab focused on that booking.
 
 ### University Knowledge Base (UKB)
 - Chatbot tools answer schedule/course/club/facility questions from the UKB service.
