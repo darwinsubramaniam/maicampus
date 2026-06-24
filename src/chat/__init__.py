@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import flet as ft
@@ -9,7 +11,10 @@ import flet as ft
 from chat.chat_core import ChatEngine
 from chat.message import ChatMessage
 from chat.sidebar import create_sidebar
+from observability import get_logger
 from ui import FONT_DISPLAY, suggestion_chip, view_header
+
+_log = get_logger("chat")
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -273,6 +278,81 @@ def create_chat_view(
             sidebar_render()
         page.update()
 
+    # --- Export chats (JSON, for debugging) ---
+    clipboard = ft.Clipboard()
+    page.services.append(clipboard)
+
+    def _export_chats(e=None):
+        try:
+            sessions = store.export_all()
+        except Exception:
+            _log.exception("Chat export failed: could not read sessions")
+            page.show_dialog(
+                ft.AlertDialog(
+                    title=ft.Text("Export failed"),
+                    content=ft.Text("Couldn't read chat sessions — is the database reachable?"),
+                    actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())],
+                )
+            )
+            page.update()
+            return
+
+        export = {
+            "exported_at": datetime.now(UTC).isoformat(),
+            "user": profile.get("name", "You"),
+            "session_count": len(sessions),
+            "sessions": sessions,
+        }
+        payload = json.dumps(export, indent=2, default=str, ensure_ascii=False)
+        size_kb = round(len(payload.encode("utf-8")) / 1024, 1)
+        _log.info("Chat export: %d session(s), %.1f KB", len(sessions), size_kb)
+
+        json_field = ft.TextField(
+            value=payload,
+            read_only=True,
+            multiline=True,
+            min_lines=12,
+            max_lines=22,
+            text_size=11,
+            text_style=ft.TextStyle(font_family="monospace"),
+            filled=True,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_LOWEST,
+        )
+        status = ft.Text("", size=12, color=ft.Colors.TEAL)
+
+        def _copy(e):
+            page.run_task(clipboard.set, payload)
+            status.value = "Copied to clipboard ✓"
+            page.update()
+
+        dlg = ft.AlertDialog(
+            title=ft.Text(f"Export chats — {len(sessions)} session(s) · {size_kb} KB"),
+            content=ft.Container(
+                width=640,
+                content=ft.Column(
+                    [
+                        ft.Text(
+                            "Full chat history as JSON. Copy it and share for debugging "
+                            "(select-all inside the box also works).",
+                            size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT,
+                        ),
+                        json_field,
+                        status,
+                    ],
+                    tight=True,
+                    spacing=10,
+                    scroll=ft.ScrollMode.AUTO,
+                ),
+            ),
+            actions=[
+                ft.TextButton("Copy JSON", icon=ft.Icons.CONTENT_COPY, on_click=_copy),
+                ft.FilledButton("Close", on_click=lambda e: page.pop_dialog()),
+            ],
+        )
+        page.show_dialog(dlg)
+        page.update()
+
     # --- Header ---
     toggle_btn = ft.IconButton(
         icon=ft.Icons.MENU,
@@ -280,12 +360,22 @@ def create_chat_view(
         on_click=toggle_sidebar,
         icon_color=ft.Colors.ON_SURFACE_VARIANT,
     )
+    export_btn = ft.IconButton(
+        icon=ft.Icons.DOWNLOAD,
+        tooltip="Export chats (JSON)",
+        on_click=_export_chats,
+        icon_color=ft.Colors.ON_SURFACE_VARIANT,
+    )
+
+    header_trailing: list[ft.Control] = [export_btn]
+    if notifications:
+        header_trailing.append(notifications.bell_button)
 
     chat_header = view_header(
         "MAI Campus",
         ft.Icons.SCHOOL,
         leading=toggle_btn,
-        trailing=[notifications.bell_button] if notifications else None,
+        trailing=header_trailing,
     )
 
     # --- Scroll-to-bottom button ---

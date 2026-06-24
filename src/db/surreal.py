@@ -28,6 +28,9 @@ from typing import Any
 from surrealdb import RecordID, Surreal
 
 from constants import APP_DIR
+from observability import get_logger
+
+_log = get_logger("db")
 
 # Vector dimension of the memory embeddings. Defaults to 1536 (OpenAI text-embedding-3-small).
 # Must match MAICAMPUS_EMBED_MODEL/DIM in memory/embedder.py; changing it needs a fresh DB
@@ -63,17 +66,24 @@ class SurrealDB:
         self._lock = threading.RLock()
 
     def _connect(self) -> Any:
-        if _URL:
-            conn = Surreal(_URL)
-            # Network engines need authentication; embedded engines (mem/file/surrealkv) do not.
-            if _URL.startswith(("ws", "http")):
-                conn.signin({"username": _USER, "password": _PASS})
-        else:
-            APP_DIR.mkdir(parents=True, exist_ok=True)
-            conn = Surreal(f"surrealkv://{APP_DIR / 'surreal.db'}")
-        conn.use(_NS, _DB_NAME)
-        for stmt in _SCHEMA:
-            conn.query(stmt)
+        target = _URL or f"embedded surrealkv://{APP_DIR / 'surreal.db'}"
+        _log.info("Connecting to SurrealDB (%s, ns=%s db=%s)", target, _NS, _DB_NAME)
+        try:
+            if _URL:
+                conn = Surreal(_URL)
+                # Network engines need authentication; embedded engines (mem/file/surrealkv) do not.
+                if _URL.startswith(("ws", "http")):
+                    conn.signin({"username": _USER, "password": _PASS})
+            else:
+                APP_DIR.mkdir(parents=True, exist_ok=True)
+                conn = Surreal(f"surrealkv://{APP_DIR / 'surreal.db'}")
+            conn.use(_NS, _DB_NAME)
+            for stmt in _SCHEMA:
+                conn.query(stmt)
+        except Exception:
+            _log.exception("SurrealDB connection/setup failed (%s)", target)
+            raise
+        _log.info("SurrealDB connected (%s)", target)
         return conn
 
     def _ensure(self) -> Any:
@@ -89,7 +99,12 @@ class SurrealDB:
         """
         with self._lock:
             conn = self._ensure()
-            result = conn.query(sql, params or {})
+            try:
+                result = conn.query(sql, params or {})
+            except Exception:
+                # Truncate to keep the trace readable; params may hold user data so are omitted.
+                _log.exception("SurrealDB query failed: %s", " ".join(sql.split())[:160])
+                raise
         return _normalize(result)
 
     def health(self) -> bool:
@@ -97,6 +112,7 @@ class SurrealDB:
             self.query("RETURN 1")
             return True
         except Exception:
+            _log.warning("SurrealDB health check failed")
             return False
 
     def close(self) -> None:

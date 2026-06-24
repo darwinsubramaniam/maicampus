@@ -53,6 +53,20 @@ class SessionStore:
             {"owner": self._owner()},
         )
 
+    def export_all(self) -> list[dict]:
+        """All of this user's sessions as plain JSON-serializable dicts (for debug export).
+
+        SurrealDB returns ``RecordID`` objects for ``id``/``owner``; stringify ``id`` and drop
+        ``owner`` (always this user) so the result serializes cleanly with ``json.dumps``.
+        """
+        out = []
+        for session in self.get_all_sessions():
+            session = dict(session)
+            session["id"] = str(session.get("id", ""))
+            session.pop("owner", None)
+            out.append(session)
+        return out
+
     def get_session(self, session_id: str) -> dict | None:
         rows = self._db.query(
             "SELECT * FROM $rid WHERE owner = $owner",

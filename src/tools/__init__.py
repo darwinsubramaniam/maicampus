@@ -35,17 +35,26 @@ def get_tool(name: str) -> ToolDefinition | None:
 def execute(name: str, arguments: dict, context: UserContext | None = None) -> dict:
     """Run a tool. ``context`` binds the authenticated user so the handler's store/API calls
     are scoped to the right person; it is set for the duration of the handler in this thread."""
+    from observability import get_logger
+
+    log = get_logger("tools")
     tool = _REGISTRY.get(name)
     if not tool:
+        log.warning("tool call for unknown tool %r", name)
         return {"error": f"Unknown tool: {name}"}
 
     import services
 
+    log.info("tool ▶ %s args=%s", name, arguments)
     token = services.set_request_context(context) if context is not None else None
     try:
-        return tool.handler(arguments)
+        result = tool.handler(arguments)
     except Exception as e:
+        log.exception("tool ✖ %s raised", name)
         return {"error": str(e)}
     finally:
         if token is not None:
             services.reset_request_context(token)
+    status = "error" if isinstance(result, dict) and "error" in result else "ok"
+    log.info("tool ◀ %s [%s]", name, status)
+    return result

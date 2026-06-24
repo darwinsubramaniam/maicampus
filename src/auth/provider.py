@@ -13,6 +13,10 @@ import os
 
 from flet.auth.providers import GoogleOAuthProvider
 
+from observability import get_logger
+
+log = get_logger("auth")
+
 _DEFAULT_REDIRECT = "http://localhost:8550/oauth_callback"
 
 # Comma-separated list of allowed email domains. Default restricts sign-in to UTM accounts;
@@ -41,16 +45,21 @@ def email_allowed(email: str) -> bool:
         return True
     parts = (email or "").lower().rsplit("@", 1)
     if len(parts) != 2:
+        log.warning("email_allowed: malformed email %r → denied", email)
         return False
     domain = parts[1]
-    return any(domain == d or domain.endswith(f".{d}") for d in _ALLOWED_DOMAINS)
+    ok = any(domain == d or domain.endswith(f".{d}") for d in _ALLOWED_DOMAINS)
+    log.info("email_allowed: %r (domain=%s) → %s", email, domain, "ALLOW" if ok else "DENY")
+    return ok
 
 
 def build_google_provider() -> GoogleOAuthProvider:
+    redirect_url = os.environ.get("MAICAMPUS_GOOGLE_REDIRECT_URL", _DEFAULT_REDIRECT)
+    log.info("Starting Google login: redirect_url=%s allowed_domains=%s", redirect_url, _ALLOWED_DOMAINS)
     provider = GoogleOAuthProvider(
         client_id=os.environ["MAICAMPUS_GOOGLE_CLIENT_ID"],
         client_secret=os.environ["MAICAMPUS_GOOGLE_CLIENT_SECRET"],
-        redirect_url=os.environ.get("MAICAMPUS_GOOGLE_REDIRECT_URL", _DEFAULT_REDIRECT),
+        redirect_url=redirect_url,
     )
     # Always show Google's account chooser so users can switch accounts (e.g. from a personal
     # gmail to their UTM account). When sign-in is restricted to a single domain, hint Google to

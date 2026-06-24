@@ -21,10 +21,13 @@ from surrealdb import RecordID
 
 from constants import DEFAULT_STUDENT_ID
 from db import get_db
+from observability import get_logger
 from services import UserContext
 
 if TYPE_CHECKING:
     from flet.auth.user import User
+
+log = get_logger("session")
 
 
 def _find_student_by_email(email: str) -> str | None:
@@ -48,11 +51,14 @@ def resolve_user_context(user: User) -> UserContext:
     user_id = str(user.id)
     email = str(user.get("email", "") or "")
     rid = RecordID("user", user_id)
+    log.debug("resolve_user_context: user_id=%s email=%r", user_id, email)
 
     existing = db.query("SELECT student_id FROM $rid", {"rid": rid})
     student_id = existing[0].get("student_id") if existing else None
     if not student_id:
         student_id = _find_student_by_email(email) or DEFAULT_STUDENT_ID
+        log.info("Linking %r → student_id=%s (%s)", email, student_id,
+                 "existing match" if existing else "new user")
 
     db.query(
         "UPSERT $rid SET email = $email, name = $name, picture = $picture, "
@@ -66,4 +72,5 @@ def resolve_user_context(user: User) -> UserContext:
             "now": datetime.now(UTC).isoformat(),
         },
     )
+    log.debug("resolve_user_context: upserted user %s", user_id)
     return UserContext(user_id=user_id, student_id=str(student_id))

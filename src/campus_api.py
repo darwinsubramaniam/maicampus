@@ -13,8 +13,10 @@ from typing import Any
 import httpx
 
 from constants import API_BASE_URL
+from observability import get_logger
 
 _TIMEOUT = httpx.Timeout(5.0)
+_log = get_logger("campus_api")
 
 __all__ = [
     "facility_availability",
@@ -37,13 +39,16 @@ def _request(method: str, path: str, **kwargs: Any) -> Any:
     url = f"{API_BASE_URL}{path}"
     try:
         resp = httpx.request(method, url, timeout=_TIMEOUT, **kwargs)
-    except httpx.RequestError:
+    except httpx.RequestError as exc:
+        _log.warning("campus API unreachable: %s %s (%s)", method, path, exc)
         return {
             "error": "The campus service is currently unavailable. Please try again later."
         }
     if resp.status_code >= 400:
         detail = _safe_detail(resp)
+        _log.warning("campus API %s %s → HTTP %d: %s", method, path, resp.status_code, detail)
         return {"error": detail, "status_code": resp.status_code}
+    _log.info("campus API %s %s → HTTP %d", method, path, resp.status_code)
     if resp.status_code == 204:
         return {"success": True}
     return resp.json()

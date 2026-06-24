@@ -17,8 +17,11 @@ if TYPE_CHECKING:
 from ai_providers import Provider, TextChunk, ToolCall, stream_response
 from chat.input_bar import create_input_bar
 from chat.message import ChatMessage
+from observability import get_logger
 from tools import execute as execute_tool
 from tools.converters import get_tools_for_provider
+
+_log = get_logger("chat.engine")
 
 
 class ChatEngine:
@@ -220,6 +223,10 @@ class ChatEngine:
                 tool_round = 0
 
                 while tool_round < max_tool_rounds:
+                    _log.info(
+                        "stream round %d/%d via %s (%d tools available)",
+                        tool_round + 1, max_tool_rounds, config.provider.value, len(provider_tools),
+                    )
                     tool_calls_this_turn: list[ToolCall] = []
                     loop = asyncio.get_event_loop()
                     queue: asyncio.Queue = asyncio.Queue()
@@ -251,11 +258,18 @@ class ChatEngine:
                             tool_calls_this_turn.append(item)
 
                     if not tool_calls_this_turn:
+                        _log.info("stream round %d: model returned text, no tool calls", tool_round + 1)
                         break
 
+                    _log.info(
+                        "stream round %d: model requested tools: %s",
+                        tool_round + 1, [tc.name for tc in tool_calls_this_turn],
+                    )
                     results = []
                     for tc in tool_calls_this_turn:
-                        result = execute_tool(tc.name, tc.arguments)
+                        # Bind the authenticated user so user-scoped tools (calendar, booking,
+                        # planner, memory) resolve the right person's stores via the ContextVar.
+                        result = execute_tool(tc.name, tc.arguments, user_ctx)
                         results.append(result)
                         if self.on_tool_executed:
                             self.on_tool_executed(tc.name, result)
@@ -290,9 +304,9 @@ class ChatEngine:
                     threading.Thread(target=_store, daemon=True).start()
 
             except Exception as ex:
-                import traceback
-
-                traceback.print_exc()
+                # Surface the real cause in the trace (provider auth/rate errors, tool failures,
+                # etc.) — this is what shows up as the red "Error: …" bubble in chat.
+                _log.exception("chat stream failed: %s", ex)
                 ai_msg.set_error(str(ex))
                 self.page.update()
 

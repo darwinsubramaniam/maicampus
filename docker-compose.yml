@@ -44,6 +44,9 @@ services:
       - api
       - surreal
     environment:
+      # Server-side tracing → `docker compose logs webapp`. PYTHONUNBUFFERED flushes it live.
+      MAICAMPUS_LOG_LEVEL: ${MAICAMPUS_LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
       # Flet runs Python server-side, so reach the API by its compose service name.
       MAICAMPUS_API_BASE: http://api:8000
       # Per-user data lives in the same SurrealDB instance.
@@ -61,14 +64,14 @@ services:
       MAICAMPUS_EMBED_MODEL: ${MAICAMPUS_EMBED_MODEL:-text-embedding-3-small}
       MAICAMPUS_EMBED_DIM: ${MAICAMPUS_EMBED_DIM:-1536}
       MAICAMPUS_EMBED_BASE_URL: ${MAICAMPUS_EMBED_BASE_URL:-}
-      # Per-user daily message limit.
+      # Per-user daily message limi
       MAICAMPUS_DAILY_LIMIT: ${MAICAMPUS_DAILY_LIMIT:-50}
       # Google SSO. When unset, the app falls back to a local demo user (single-tenant dev mode).
       MAICAMPUS_GOOGLE_CLIENT_ID: ${MAICAMPUS_GOOGLE_CLIENT_ID:-}
       MAICAMPUS_GOOGLE_CLIENT_SECRET: ${MAICAMPUS_GOOGLE_CLIENT_SECRET:-}
       MAICAMPUS_GOOGLE_REDIRECT_URL: ${MAICAMPUS_GOOGLE_REDIRECT_URL:-http://localhost:8550/oauth_callback}
       # Restrict sign-in to these email domains (subdomains included). Empty/"*" = any account.
-      MAICAMPUS_ALLOWED_EMAIL_DOMAINS: ${MAICAMPUS_ALLOWED_EMAIL_DOMAINS:-utm.my}
+      MAICAMPUS_ALLOWED_EMAIL_DOMAINS: ${MAICAMPUS_ALLOWED_EMAIL_DOMAINS:-graduate.utm.my}
     ports:
       - "8550:8550"
 

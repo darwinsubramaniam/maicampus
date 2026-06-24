@@ -9,6 +9,10 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 from enum import Enum
 
+from observability import get_logger
+
+_log = get_logger("ai")
+
 
 class Provider(Enum):
     OPENAI = "OpenAI"
@@ -93,13 +97,26 @@ def stream_response(
         system_msg = messages[0]["content"]
         chat_messages = messages[1:]
 
-    match config.provider:
-        case Provider.OPENAI | Provider.DEEPSEEK:
-            yield from _stream_openai(config, messages, tools=tools)
-        case Provider.CLAUDE:
-            yield from _stream_claude(config, chat_messages, system=system_msg, tools=tools)
-        case Provider.GEMINI:
-            yield from _stream_gemini(config, chat_messages, system=system_msg, tools=tools)
+    _log.info(
+        "LLM stream start: provider=%s model=%s tools=%d msgs=%d",
+        config.provider.value, config.effective_model, len(tools or []), len(messages),
+    )
+    try:
+        match config.provider:
+            case Provider.OPENAI | Provider.DEEPSEEK:
+                yield from _stream_openai(config, messages, tools=tools)
+            case Provider.CLAUDE:
+                yield from _stream_claude(config, chat_messages, system=system_msg, tools=tools)
+            case Provider.GEMINI:
+                yield from _stream_gemini(config, chat_messages, system=system_msg, tools=tools)
+    except Exception:
+        # The single most useful line when chat breaks: which provider/model and the raw cause
+        # (auth 401, rate limit, bad request) — surfaced here before it bubbles to the chat engine.
+        _log.exception(
+            "LLM stream failed: provider=%s model=%s", config.provider.value, config.effective_model
+        )
+        raise
+    _log.debug("LLM stream complete: provider=%s", config.provider.value)
 
 
 def _stream_openai(

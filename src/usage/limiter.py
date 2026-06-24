@@ -19,9 +19,11 @@ from datetime import UTC, date, datetime
 from surrealdb import RecordID
 
 from db import get_db, user_ref
+from observability import get_logger
 
 DAILY_LIMIT = int(os.environ.get("MAICAMPUS_DAILY_LIMIT", "50"))
 
+_log = get_logger("usage")
 _TABLE = "usage_daily"
 
 
@@ -49,6 +51,7 @@ def check_and_increment(user_id: str) -> UsageStatus:
     used = int(rows[0]["requests"]) if rows and rows[0].get("requests") is not None else 0
 
     if used >= DAILY_LIMIT:
+        _log.warning("daily limit reached for user %s (%d/%d) — request refused", user_id, used, DAILY_LIMIT)
         return UsageStatus(allowed=False, used=used, limit=DAILY_LIMIT)
 
     db.query(
@@ -61,6 +64,7 @@ def check_and_increment(user_id: str) -> UsageStatus:
             "now": datetime.now(UTC).isoformat(),
         },
     )
+    _log.debug("usage for user %s: %d/%d today", user_id, used + 1, DAILY_LIMIT)
     return UsageStatus(allowed=True, used=used + 1, limit=DAILY_LIMIT)
 
 

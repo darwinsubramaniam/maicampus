@@ -18,10 +18,12 @@ from typing import TYPE_CHECKING
 
 from db import get_db, user_ref
 from memory import embedder
+from observability import get_logger
 
 if TYPE_CHECKING:
     from surrealdb import RecordID
 
+_log = get_logger("memory")
 _TABLE = "memory"
 # Cosine similarity below this is treated as "not relevant" and dropped from recall, so an
 # empty/foreign query doesn't pull in unrelated memories.
@@ -59,6 +61,7 @@ class MemoryManager:
         try:
             vector = embedder.embed(text)
         except Exception:
+            _log.warning("memory add skipped: embedding failed for user %s", self._uid, exc_info=True)
             return
         record = {
             "owner": self._owner(user_id),
@@ -68,6 +71,7 @@ class MemoryManager:
             "created_at": datetime.now(UTC).isoformat(),
         }
         self._db.query(f"CREATE {_TABLE} CONTENT $data", {"data": record})
+        _log.debug("memory added for user %s (%d chars)", self._uid, len(text))
 
     def search_relevant(self, query: str, user_id: str | None = None, top_k: int = 5) -> list[str]:
         """Semantic search for the most relevant memories for this user. Returns [] if the
@@ -83,8 +87,11 @@ class MemoryManager:
                 {"q": qvec, "owner": self._owner(user_id), "k": top_k},
             )
         except Exception:
+            _log.warning("memory recall failed for user %s (returning none)", self._uid, exc_info=True)
             return []
-        return [r["text"] for r in rows if r.get("score", 0) >= _MIN_SCORE]
+        hits = [r["text"] for r in rows if r.get("score", 0) >= _MIN_SCORE]
+        _log.debug("memory recall for user %s: %d/%d above threshold", self._uid, len(hits), len(rows))
+        return hits
 
     def get_all(self, user_id: str | None = None) -> list[dict]:
         """Retrieve all memories for this user, newest first."""

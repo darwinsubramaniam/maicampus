@@ -18,6 +18,7 @@ from constants import DEFAULT_STUDENT_ID
 from facility_booking import create_facility_view
 from memory import MemoryManager
 from notifications import NotificationCenter
+from observability import get_logger
 from planner import SmartPlannerTask
 from services import UserContext
 from settings import create_settings_view
@@ -30,6 +31,8 @@ from tools import ukb_tools as _ukb_tools  # noqa: F401  # side-effect: register
 # Local-dev identity used only when Google SSO is not configured, so `uv run flet run` works
 # offline. Production sets MAICAMPUS_GOOGLE_CLIENT_ID/SECRET and every user logs in for real.
 _DEV_USER_ID = "dev-local"
+
+log = get_logger("app")
 
 
 def main(page: ft.Page):
@@ -126,23 +129,39 @@ def main(page: ft.Page):
         page.add(login_card)
 
     def on_login(e):
+        log.info("on_login fired (error=%r)", getattr(e, "error", None))
         if getattr(e, "error", None):
+            log.warning("OAuth flow returned an error → back to login: %s", e.error)
             show_login()
             return
         user = getattr(page.auth, "user", None)
         if user is None:
+            log.warning("on_login: page.auth.user is None (no identity) → back to login")
             show_login()
             return
         email = str(user.get("email") or "")
+        log.info("OAuth user authenticated: email=%r name=%r", email, str(user.get("name") or ""))
         # Server-side gate: only allow UTM accounts (Google's `hd` hint is not a security control).
         if not email_allowed(email):
+            log.warning("Access denied for %r (allowed: %s)", email, allowed_domains_label())
             page.logout()
             show_access_denied(email)
             return
-        auth["ctx"] = resolve_user_context(user)
-        auth["name"] = str(user.get("name") or "You")
-        auth["pic"] = str(user.get("picture") or "")
-        show_main_app()
+        try:
+            auth["ctx"] = resolve_user_context(user)
+            auth["name"] = str(user.get("name") or "You")
+            auth["pic"] = str(user.get("picture") or "")
+            log.info(
+                "Session established: user_id=%s student_id=%s",
+                auth["ctx"].user_id,
+                auth["ctx"].student_id,
+            )
+            show_main_app()
+            log.info("Main app rendered for %r", email)
+        except Exception:
+            # Don't strand the user on a blank screen — log the full trace and return to login.
+            log.exception("Failed to establish session after login for %r", email)
+            show_login()
 
     def show_access_denied(email: str):
         page.navigation_bar = None
@@ -364,10 +383,12 @@ def main(page: ft.Page):
 
     # --- Entry: gate the whole app behind authentication --------------------
     if google_oauth_configured():
+        log.info("New session: Google SSO active (allowed domains: %s)", allowed_domains_label())
         page.on_login = on_login
         show_login()
     else:
         # No Google SSO configured (local dev) — auto-sign-in as the demo student.
+        log.warning("New session: Google SSO NOT configured — auto-login as dev user")
         auth["ctx"] = UserContext(user_id=_DEV_USER_ID, student_id=DEFAULT_STUDENT_ID)
         show_main_app()
 
