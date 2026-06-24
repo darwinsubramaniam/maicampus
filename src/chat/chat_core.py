@@ -88,7 +88,15 @@ class ChatEngine:
             "check_facility_availability to find open slots, and book_facility to reserve one. "
             "Use list_my_bookings to show the student's current bookings, cancel_booking to cancel "
             "one, and reschedule_booking to move one to a new time. Always confirm the facility, "
-            "date and time with the student before booking, cancelling, or rescheduling."
+            "date and time with the student before booking, cancelling, or rescheduling.\n"
+            "Facility ids (e.g. FAC05) and booking ids come ONLY from tool results. Copy the id "
+            "exactly from the latest search_facilities result for the facility you mean — never "
+            "guess an id, reuse one from earlier in the chat, or assume two facilities share an id. "
+            "After booking, state the facility name that book_facility returns, not the one you "
+            "intended. To check, cancel, or reschedule, FIRST call list_my_bookings and use the "
+            "exact booking_id and facility name it returns — treat its result as the source of "
+            "truth over your own memory. If a booking looks wrong or missing, show the student what "
+            "list_my_bookings actually returned and ask; never silently re-book to 'fix' it."
         )
 
         # Detect if this is a progress check-in session (MAI initiated)

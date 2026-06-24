@@ -63,6 +63,43 @@ def _facility_name_map() -> dict[str, str]:
     return {f["id"]: f["name"] for f in facilities}
 
 
+# Generic facility words that shouldn't, on their own, count as a name match — so "Badminton
+# Court" vs "Futsal Court" aren't treated as the same facility just because both say "court".
+_GENERIC_FACILITY_WORDS = {"court", "room", "pod", "hall", "lab", "studio", "block", "level"}
+
+
+def _name_tokens(name: str) -> set[str]:
+    """Distinctive lowercase tokens of a facility name (drops short/generic words)."""
+    tokens = ("".join(ch for ch in word.lower() if ch.isalnum()) for word in name.split())
+    return {t for t in tokens if len(t) >= 3 and t not in _GENERIC_FACILITY_WORDS}
+
+
+def _names_match(hint: str, actual: str) -> bool:
+    """True if the model's intended facility name plausibly refers to the resolved one.
+
+    Lenient on purpose: only a *gross* mismatch (no shared distinctive token — e.g. asking for
+    'Badminton Court 1' while the id resolves to 'PSZ Discussion Room B') returns False, so a
+    legitimate booking is never blocked over a wording difference.
+    """
+    h, a = _name_tokens(hint), _name_tokens(actual)
+    if not h or not a:
+        return True  # nothing distinctive to compare → don't block
+    return bool(h & a)
+
+
+def _resolve_facility_by_name(hint: str) -> str | None:
+    """Best-effort: the facility_id whose name shares the most distinctive tokens with `hint`."""
+    h = _name_tokens(hint)
+    if not h:
+        return None
+    best, best_score = None, 0
+    for fid, fname in _facility_name_map().items():
+        score = len(h & _name_tokens(fname))
+        if score > best_score:
+            best, best_score = fid, score
+    return best
+
+
 def _find_booking_event(booking_id: int) -> dict | None:
     """Find the calendar event mirrored from a booking by its stored ``booking_id`` link."""
     for event in _get_store().get_all_events():
@@ -134,6 +171,20 @@ def _handle_book_facility(args: dict) -> dict:
     if (err := _err(availability)) is not None:
         return err
     facility_name = availability["facility_name"]
+
+    # Defensive id check: if the caller told us which facility it means, make sure the id it
+    # passed actually resolves to that facility. A wrong id otherwise silently books the wrong
+    # room (e.g. FAC02 'PSZ Discussion Room B' when the student asked for Badminton).
+    name_hint = args.get("facility_name", "").strip()
+    if name_hint and not _names_match(name_hint, facility_name):
+        suggested = _resolve_facility_by_name(name_hint)
+        did_you_mean = f" Did you mean {suggested}?" if suggested and suggested != facility_id else ""
+        return {
+            "error": (
+                f"Facility {facility_id} is '{facility_name}', not '{name_hint}'.{did_you_mean} "
+                "Re-check the id from search_facilities before booking."
+            )
+        }
 
     slot_taken = any(
         _overlaps(start_time, end_time, s["start_time"], s["end_time"]) and not s["available"]
@@ -370,12 +421,21 @@ register(
         description=(
             "Book a campus facility for the student. Checks facility availability AND the student's"
             " calendar for clashes before confirming; on success it saves the booking and adds it to"
-            " the calendar. If there is a conflict it returns suggested free slots instead."
+            " the calendar. If there is a conflict it returns suggested free slots instead. Pass"
+            " facility_name (from search_facilities) so a wrong facility_id can't book the wrong room."
         ),
         parameters={
             "type": "object",
             "properties": {
                 "facility_id": {"type": "string", "description": "Facility id, e.g. FAC01 (from search_facilities)"},
+                "facility_name": {
+                    "type": "string",
+                    "description": (
+                        "Name of the facility you intend to book, exactly as shown by"
+                        " search_facilities (e.g. 'Badminton Court 1'). Always include it: it's"
+                        " checked against facility_id so a mistyped id is rejected, not booked."
+                    ),
+                },
                 "date": {"type": "string", "description": "Date in YYYY-MM-DD format"},
                 "start_time": {"type": "string", "description": "Start time in HH:MM 24-hour format"},
                 "end_time": {"type": "string", "description": "End time in HH:MM 24-hour format"},
