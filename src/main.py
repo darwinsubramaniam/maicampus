@@ -233,6 +233,14 @@ def main(page: ft.Page):
                     color=ft.Colors.TEAL,
                 )
 
+            # A booking created/changed from the Book button or the floating chat changes
+            # "My Bookings" — re-query the Booking panel so it doesn't keep showing the
+            # stale (often empty) list it loaded before the booking existed.
+            if name in ("book_facility", "cancel_booking", "reschedule_booking"):
+                refresh = getattr(facility_view, "refresh", None)
+                if refresh:
+                    refresh()
+
         # Calendar → Booking deep link: a booking's calendar mirror can't be edited in place, so
         # its "Manage in Booking" action jumps to the Booking tab focused on that booking.
         def navigate_to_booking(booking_id=None, facility_id=None):
