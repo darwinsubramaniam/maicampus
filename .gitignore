@@ -165,6 +165,7 @@ cython_debug/
 # Flet
 storage/
 
-# UV lock file
-uv.lock
+# UV lock file — committed for reproducible Docker builds (Dockerfile.web uses `uv sync --frozen`).
+# `!` overrides the broad `*.lock` rule above so uv.lock IS tracked.
+!uv.lock
 .DS_Store
