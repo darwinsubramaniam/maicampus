@@ -83,3 +83,4 @@ def apply_theme(page: ft.Page):
     page.dark_theme = DARK_THEME
     page.theme_mode = ft.ThemeMode.SYSTEM
     page.padding = 0
+    page.spacing = 0

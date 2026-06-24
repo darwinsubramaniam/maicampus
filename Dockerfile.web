@@ -16,6 +16,12 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --group web --no-install-project
 
+# Brand the web boot loader (replace the default Flet logo splash with a MAI Campus one).
+# flet_web serves the directory pointed to by FLET_WEB_PATH.
+COPY scripts ./scripts
+RUN uv run --no-sync python scripts/customize_web.py /app/web
+ENV FLET_WEB_PATH=/app/web
+
 # App source.
 COPY src ./src
 

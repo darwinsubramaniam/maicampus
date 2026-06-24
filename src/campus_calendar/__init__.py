@@ -21,12 +21,15 @@ if TYPE_CHECKING:
 def create_calendar_view(
     page: ft.Page,
     get_memory_manager: Callable,
+    get_calendar_store: Callable,
     get_config: Callable | None = None,
     get_calendar_context_fn: Callable | None = None,
     on_tool_executed: Callable | None = None,
+    get_session_store: Callable | None = None,
+    get_user_context: Callable | None = None,
+    user_name: str = "You",
+    user_pic: str = "",
 ) -> ft.Stack:
-    from services import get_calendar_store
-
     selected_date = {"value": date.today()}
 
     def _refresh_all():
@@ -117,8 +120,12 @@ def create_calendar_view(
             page=page,
             get_config=get_config,
             get_memory_manager=get_memory_manager,
+            get_session_store=get_session_store,
             get_calendar_context=get_calendar_context_fn,
             on_tool_executed=on_tool_executed,
+            get_user_context=get_user_context,
+            user_name=user_name,
+            user_pic=user_pic,
         )
         stack_controls.append(floating)  # type: ignore[arg-type]
 

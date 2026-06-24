@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import threading
+from typing import TYPE_CHECKING
 
 import flet as ft
 
 from constants import API_BASE_URL
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def _health_row(label: str) -> tuple[ft.Row, ft.Icon, ft.Text]:
@@ -29,7 +33,7 @@ def _health_row(label: str) -> tuple[ft.Row, ft.Icon, ft.Text]:
     return row, icon, detail
 
 
-def create_knowledge_settings(page: ft.Page) -> ft.Container:
+def create_knowledge_settings(page: ft.Page, get_user_context: Callable | None = None) -> ft.Container:
     status_text = ft.Text("", color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER)
     sync_btn_text = ft.Text("Sync from Knowledge Base", color=ft.Colors.WHITE)
 
@@ -76,9 +80,11 @@ def create_knowledge_settings(page: ft.Page) -> ft.Container:
         page.update()
 
         def _run():
-            from tools.ukb_tools import sync_timetable_from_ukb
+            import tools
 
-            result = sync_timetable_from_ukb()
+            # Run through the tool registry so the sync is scoped to the authenticated user.
+            ctx = get_user_context() if get_user_context else None
+            result = tools.execute("sync_my_classes", {}, ctx)
             sync_btn_text.value = "Sync from Knowledge Base"
             if "error" in result:
                 status_text.value = result["error"]

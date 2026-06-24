@@ -34,8 +34,14 @@ def create_facility_view(
     get_config: Callable | None = None,
     get_calendar_context_fn: Callable | None = None,
     on_tool_executed: Callable | None = None,
+    get_session_store: Callable | None = None,
+    get_user_context: Callable | None = None,
+    user_name: str = "You",
+    user_pic: str = "",
 ) -> ft.Stack:
     state: dict = {"facility": None, "items": []}
+    # Captured once per user view — passed to every tool call so booking/availability run as this user.
+    user_ctx = get_user_context() if get_user_context else None
 
     # --- Controls -----------------------------------------------------------
     type_filter = ft.Dropdown(
@@ -195,7 +201,7 @@ def create_facility_view(
             ftype = None if type_filter.value == "all" else type_filter.value
             # Use the shared search_facilities tool so the dict shape (incl. "hours")
             # matches what the cards render — same path the chatbot uses.
-            result = tools.execute("search_facilities", {"type": ftype} if ftype else {})
+            result = tools.execute("search_facilities", {"type": ftype} if ftype else {}, user_ctx)
             if "error" in result:
                 state["items"] = []
                 facilities_list.controls.clear()
@@ -228,7 +234,7 @@ def create_facility_view(
 
         def _work():
             res = tools.execute(
-                "check_facility_availability", {"facility_id": f["id"], "date": date_field.value}
+                "check_facility_availability", {"facility_id": f["id"], "date": date_field.value}, user_ctx
             )
             if "error" in res:
                 _set_result(_banner(res["error"], ft.Colors.ORANGE, ft.Icons.CLOUD_OFF))
@@ -254,6 +260,7 @@ def create_facility_view(
                     "start_time": start_field.value,
                     "end_time": end_field.value,
                 },
+                user_ctx,
             )
             book_btn.disabled = False
 
@@ -367,8 +374,12 @@ def create_facility_view(
             page=page,
             get_config=get_config,
             get_memory_manager=get_memory_manager,
+            get_session_store=get_session_store,
             get_calendar_context=get_calendar_context_fn,
             on_tool_executed=on_tool_executed,
+            get_user_context=get_user_context,
+            user_name=user_name,
+            user_pic=user_pic,
         )
         stack_controls.append(floating)
 

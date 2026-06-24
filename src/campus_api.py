@@ -12,12 +12,11 @@ from typing import Any
 
 import httpx
 
-from constants import API_BASE_URL, DEFAULT_STUDENT_ID
+from constants import API_BASE_URL
 
 _TIMEOUT = httpx.Timeout(5.0)
 
 __all__ = [
-    "DEFAULT_STUDENT_ID",
     "facility_availability",
     "facility_book",
     "facility_bookings",
@@ -48,6 +47,16 @@ def _request(method: str, path: str, **kwargs: Any) -> Any:
     if resp.status_code == 204:
         return {"success": True}
     return resp.json()
+
+
+def _student_id(explicit: str | None) -> str:
+    """Resolve the campus matric for the call: an explicit value, else the current user's
+    linked student id (set by ``tools.execute``)."""
+    if explicit:
+        return explicit
+    import services
+
+    return services.current_student_id()
 
 
 def _safe_detail(resp: httpx.Response) -> str:
@@ -115,8 +124,8 @@ def ukb_course(code: str) -> Any:
     return _request("GET", f"/ukb/courses/{code}")
 
 
-def ukb_student_timetable(student_id: str = DEFAULT_STUDENT_ID) -> Any:
-    return _request("GET", f"/ukb/students/{student_id}/timetable")
+def ukb_student_timetable(student_id: str | None = None) -> Any:
+    return _request("GET", f"/ukb/students/{_student_id(student_id)}/timetable")
 
 
 def ukb_clubs(interest: str | None = None) -> Any:
@@ -147,13 +156,13 @@ def facility_book(
     date: str,
     start_time: str,
     end_time: str,
-    student_id: str = DEFAULT_STUDENT_ID,
+    student_id: str | None = None,
 ) -> Any:
     return _request(
         "POST",
         "/facility/bookings",
         json={
-            "student_id": student_id,
+            "student_id": _student_id(student_id),
             "facility_id": facility_id,
             "date": date,
             "start_time": start_time,
@@ -162,8 +171,8 @@ def facility_book(
     )
 
 
-def facility_bookings(student_id: str = DEFAULT_STUDENT_ID) -> Any:
-    return _request("GET", "/facility/bookings", params={"student_id": student_id})
+def facility_bookings(student_id: str | None = None) -> Any:
+    return _request("GET", "/facility/bookings", params={"student_id": _student_id(student_id)})
 
 
 def facility_cancel(booking_id: int) -> Any:

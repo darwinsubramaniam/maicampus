@@ -7,24 +7,26 @@ import flet as ft
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from settings.ai_settings import create_ai_settings
 from settings.appearance_settings import create_appearance_settings
 from settings.knowledge_settings import create_knowledge_settings
+from settings.logout_settings import create_logout_settings
 from settings.planner_settings import create_planner_settings
 from settings.profile_settings import create_profile_settings
-from settings.reset_settings import create_reset_settings
 from ui import FONT_DISPLAY, section_card
 
 
 def create_settings_view(
-    page: ft.Page, on_ai_save: Callable, on_reset: Callable, on_scan: Callable | None = None
+    page: ft.Page,
+    on_logout: Callable,
+    on_scan: Callable | None = None,
+    get_user_context: Callable | None = None,
 ) -> ft.Row:
-    profile_section = create_profile_settings(page)
+    # AI Provider is server-managed (single DeepSeek key) — no per-user key UI in the multi-user build.
+    profile_section = create_profile_settings(page, get_user_context=get_user_context)
     appearance_section = create_appearance_settings(page)
-    ai_section = create_ai_settings(page, on_ai_save)
-    knowledge_section = create_knowledge_settings(page)
+    knowledge_section = create_knowledge_settings(page, get_user_context=get_user_context)
     planner_section = create_planner_settings(page, on_scan=on_scan)
-    reset_section = create_reset_settings(page, on_reset)
+    logout_section = create_logout_settings(page, on_logout)
 
     sections = [
         {
@@ -40,12 +42,6 @@ def create_settings_view(
             "content": appearance_section,
         },
         {
-            "label": "AI Provider",
-            "icon": ft.Icons.SMART_TOY_OUTLINED,
-            "selected_icon": ft.Icons.SMART_TOY,
-            "content": ai_section,
-        },
-        {
             "label": "Knowledge",
             "icon": ft.Icons.SCHOOL_OUTLINED,
             "selected_icon": ft.Icons.SCHOOL,
@@ -58,10 +54,10 @@ def create_settings_view(
             "content": planner_section,
         },
         {
-            "label": "Reset",
-            "icon": ft.Icons.DELETE_OUTLINE,
-            "selected_icon": ft.Icons.DELETE_FOREVER,
-            "content": reset_section,
+            "label": "Logout",
+            "icon": ft.Icons.LOGOUT_OUTLINED,
+            "selected_icon": ft.Icons.LOGOUT,
+            "content": logout_section,
         },
     ]
 

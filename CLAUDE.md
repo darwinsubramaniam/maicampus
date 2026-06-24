@@ -1,11 +1,18 @@
 # MAI Campus
 
-An AI-powered student companion app built with Flet (Python). Helps students manage campus life — classes, assignments, deadlines, facility bookings, social clubs, and more.
+An AI-powered student companion app built with Flet (Python). Helps students manage campus life —
+classes, assignments, deadlines, facility bookings, social clubs, and more.
+
+It runs as a **multi-tenant web server**: students sign in with **Google SSO** (restricted to UTM
+accounts), and every user's data — chat history, calendar, AI memory, bookings — is fully isolated
+in **SurrealDB**. A single server-side AI key (DeepSeek by default) powers chat for everyone, capped
+by per-user daily limits.
 
 ## Prerequisites
 
 - Python 3.14+ (see `pyproject.toml`)
 - [uv](https://docs.astral.sh/uv/) package manager
+- Docker + Docker Compose (for the full stack / SurrealDB / campus backend)
 
 ## Getting Started
 
@@ -15,162 +22,166 @@ An AI-powered student companion app built with Flet (Python). Helps students man
 uv sync
 ```
 
-### 2. Run the app (with hot reload)
+### 2. Run the full stack with Docker Compose (recommended)
 
-**Desktop** (native OS window):
-```bash
-uv run flet run --recursive src
-```
-
-**Web** (browser):
-```bash
-uv run flet run --web --recursive src
-```
-
-**iOS** (simulator or device):
-```bash
-uv run flet run --ios --recursive src
-```
-
-**Android** (emulator or device):
-```bash
-uv run flet run --android --recursive src
-```
-
-- `--recursive` (`-r`) watches `src/` and all subdirectories for changes and auto-reloads on save
-
-### 3. Run the stack with Docker Compose (mock backend + web app)
-
-The University Knowledge Base and Facility Booking features call an external mock backend, and the
-whole app can also be served as a website. All of it runs via Docker Compose (three services:
-`db`, `api`, `webapp`):
+The stack is **SurrealDB + FastAPI campus backend + the Flet web app**. Copy the env template and
+fill in your keys, then bring it up:
 
 ```bash
-docker compose up --build
+cp .env.sample .env        # then edit .env (see "Configuration" below)
+docker compose up --build  # web: http://localhost:8550 · API: http://localhost:28000 (docs at /docs)
 ```
 
 | Service | Host port | Notes |
 |---|---|---|
 | `webapp` | `http://localhost:8550` | The MAiCampus Flet app served as a website |
-| `api` | `http://localhost:28000` | Mock backend (UKB + Facility Booking); OpenAPI docs at `/docs` |
-| `db` | _(internal only)_ | Postgres 18 — no host port (shared-server friendly) |
+| `api` | `http://localhost:28000` | Campus backend (UKB + Facility Booking); OpenAPI docs at `/docs` |
+| `surreal` | _(internal only)_ | SurrealDB — single datastore (per-user **and** campus data) |
 
-- Mock backend lives in `mock_server/`, seeded (`mock_server/seed.py`) with a UTM/Malaysian dataset
-  anchored to the FOL scenario (MECS0033 · Darwin `MEC255043` · Mon 09:00–11:00 · Room N28 · Dr Shafaatunnur).
-- The **webapp** runs Python server-side, so it reaches the API over the compose network at
-  `http://api:8000` (set via `MAICAMPUS_API_BASE`).
-- A **locally-run** app (`uv run flet run`) uses `constants.API_BASE_URL` (default
-  `http://localhost:28000`, override with `MAICAMPUS_API_BASE`) through `src/campus_api.py` (httpx);
-  calls degrade gracefully when the backend is down.
-- To run only the backend (no web app): `docker compose up --build db api`.
+- Both `api` and `webapp` connect to the **same** SurrealDB instance (namespace `maicampus`,
+  database `app`) — campus reference data in its own tables, per-user data owner-scoped.
+- The `api` `lifespan` waits for SurrealDB, defines the campus schema, then seeds (idempotent — a
+  no-op once a student exists), anchored to the FOL scenario
+  (MECS0033 · Darwin `MEC255043` · Mon 09:00–11:00 · Room N28 · Dr Shafaatunnur).
+- Backend only (no web app): `docker compose up --build surreal api`.
+- `docker compose down` keeps data in the `surrealdata` volume; `down -v` wipes it (forces re-seed).
+
+### 3. Run locally for UI iteration (`flet run`)
+
+```bash
+uv run flet run --web --recursive src     # or: --recursive src (desktop), --ios, --android
+```
+
+- With **no Google credentials** set, the app auto-signs-in as a **local demo user**
+  (`student_id = MEC255043`) so you can iterate on the UI offline — no login, no Docker.
+- Per-user data uses an **embedded, file-backed SurrealDB** at `~/.maicampus/surreal.db` (the
+  `surrealkv://` engine bundled with the Python SDK), so it persists across restarts.
+- UKB / Facility features still call the campus API (`http://localhost:28000`); run
+  `docker compose up surreal api` alongside, or they degrade gracefully to a "service unavailable"
+  message.
+- `--recursive` (`-r`) watches `src/` and auto-reloads on save.
+
+## Configuration (env vars)
+
+All config is via environment variables. Docker Compose auto-loads `.env`; `.env` is gitignored,
+`.env.sample` is the committed template.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `MAICAMPUS_GOOGLE_CLIENT_ID` / `_SECRET` | Google OAuth web client | _(unset → local demo user)_ |
+| `MAICAMPUS_GOOGLE_REDIRECT_URL` | Must match an Authorized redirect URI in Google Console **and** where the app is browsed | `http://localhost:8550/oauth_callback` |
+| `MAICAMPUS_ALLOWED_EMAIL_DOMAINS` | Comma-separated allowed sign-in domains (subdomains included). `*`/empty = any account | `utm.my` |
+| `MAICAMPUS_AI_PROVIDER` | Chat provider (`deepseek`/`openai`/`claude`/`gemini`) | `deepseek` |
+| `MAICAMPUS_AI_API_KEY` | Server-side chat key (shared by all users) | _(empty)_ |
+| `MAICAMPUS_AI_MODEL` | Optional chat model override | provider default (`deepseek-chat`) |
+| `MAICAMPUS_EMBED_API_KEY` | OpenAI key for **memory embeddings** (DeepSeek has none) | _(empty → memory off)_ |
+| `MAICAMPUS_EMBED_MODEL` / `_DIM` | Embedding model + vector dimension | `text-embedding-3-small` / `1536` |
+| `MAICAMPUS_DAILY_LIMIT` | Per-user chat messages per day | `50` |
+| `MAICAMPUS_SURREAL_URL` / `_USER` / `_PASS` / `_NS` / `_DB` | SurrealDB connection (unset URL → embedded local file) | `ws://surreal:8000/rpc` … `maicampus`/`app` |
+| `MAICAMPUS_API_BASE` | Campus API base URL | `http://localhost:28000` (Docker webapp → `http://api:8000`) |
+| `MAICAMPUS_CF_TUNNEL_TOKEN` | Cloudflare named-tunnel token (optional) | _(empty)_ |
 
 ## Features
 
+### Authentication & multi-tenancy
+- **Google SSO** via Flet's native `GoogleOAuthProvider`; the whole app is gated behind login.
+- **UTM-only** sign-in enforced server-side (`MAICAMPUS_ALLOWED_EMAIL_DOMAINS`, default `utm.my` —
+  covers `@utm.my`, `@graduate.utm.my`, …). Non-UTM accounts get an "UTM account required" screen.
+- Account chooser is forced (`prompt=select_account`) so users can switch accounts; when restricted
+  to one domain, Google's `hd` hint pre-filters the chooser.
+- **Per-user isolation:** every per-user record carries an `owner = user:<google-sub>` link, and
+  every query filters by it — one user can never see another's chats, calendar, memory, or bookings.
+
 ### AI Chat
-- Streaming AI responses from OpenAI, Claude, or Gemini (configurable)
-- "MAI is thinking..." loading indicator with spinner before response streams in
-- Chat messages with user profile pic/name and "MAI" AI branding (school icon)
-- Error messages displayed as distinct red bubbles
-- Background streaming — user can navigate to Settings while AI responds
-- Floating scroll-to-bottom button when scrolled up in chat
+- Streaming responses from a **single server-side key** (DeepSeek by default; OpenAI/Claude/Gemini
+  supported). No per-user API keys.
+- "MAI is thinking…" spinner; user/MAI avatars; red error bubbles; background streaming.
+- Floating scroll-to-bottom button; floating chat bubble on the Calendar/Booking tabs.
 
 ### Chat History
-- Multiple chat sessions persisted via TinyDB (`~/.maicampus/chat_history.json`)
-- Toggleable inline sidebar (hamburger menu) showing session list with relative timestamps
-- Auto-title from first user message
-- Session switching with full conversation restore
-- Delete sessions
-- Most recent session auto-loads on startup
+- Per-user chat sessions in SurrealDB (`chat_session`), owner-scoped.
+- Toggleable sidebar with relative timestamps, auto-title, session switching, delete, auto-load most
+  recent on startup.
 
-### AI Memory (Mem0 + ChromaDB)
-- Long-term knowledge extraction from conversations via Mem0
-- Semantic search of past memories injected as context (RAG)
-- Local ChromaDB vector storage at `~/.maicampus/chroma_db`
-- Per-student memory scoping (user_id)
+### AI Memory (SurrealDB vectors)
+- Long-term memory stored as `memory` records with a 1536-dim embedding and an HNSW vector index.
+- Embeddings via the **OpenAI embeddings API** (`text-embedding-3-small`) — no local model / torch.
+- Semantic recall (cosine similarity) injected as RAG context, scoped to the owner.
+- **Best-effort / fail-soft:** a missing/failed embedding never breaks chat or booking.
+
+### Daily usage limits
+- Per-user, per-day counters in `usage_daily` (id `[user_id, date]`); checked before each AI call.
+- Over the limit → a friendly "daily limit reached" message instead of streaming. Date-keyed records
+  self-reset at midnight (no cron).
 
 ### Navigation
-- Bottom NavigationBar with Chat and Settings tabs
-- Both views stay in page tree (Stack) — streaming continues when on Settings tab
-- Chat header with hamburger menu toggle for history sidebar
+- Bottom `NavigationBar`: **Chat · Calendar · Booking · Settings** (compact height for web).
+- Views swap in a single `Container`; chat streaming continues across tabs.
 
 ### Facility Booking (Flow 6)
-- Dedicated **Booking** tab: search facilities by type → pick date/time → check availability
-- Conflict detection against BOTH the facility (server) and the student's own calendar
-- Conflicts show a red banner + suggested free slots (clickable chips auto-fill the time)
-- On confirm: booking saved to the Facility API and mirrored onto the calendar + a notification
-- Same `book_facility` tool powers chat, so MAI can book conversationally too
-- Backed by the [mock campus backend](#mock-campus-backend-ukb--facility-booking)
+- **Booking** tab: search facilities → pick date/time → check availability → book.
+- Conflict detection against BOTH the facility (server) and the user's own calendar; conflicts show a
+  red banner + clickable suggested free-slot chips.
+- On confirm: booking saved to the Facility API and mirrored onto the user's calendar + a
+  notification. The same `book_facility` tool powers chat, so MAI can book conversationally too.
 
 ### University Knowledge Base (UKB)
-- Chatbot tools answer schedule/course/club/facility questions from the UKB service
-  (e.g. "Do I have class on Monday?", "When does the library close?", "Which clubs focus on tech?")
-- **Settings → Knowledge → "Sync from Knowledge Base"** imports the student's classes into the calendar
-- Backed by the [mock campus backend](#mock-campus-backend-ukb--facility-booking)
-
-### Onboarding (Bootstrap Wizard)
-- Step-by-step first-run setup: Welcome → Profile → AI Provider → Done
-- Plugin-based step system — add/remove/reorder steps in `bootstrap/pipeline.py`
-- Reusable generic wizard engine (`bootstrap/wizard.py`)
+- Chatbot tools answer schedule/course/club/facility questions from the UKB service.
+- **Settings → Knowledge → "Sync from Knowledge Base"** imports the signed-in student's classes into
+  their calendar (recurring weekly events, deduped by `(title, weekday)`).
 
 ### Settings
-- **Profile**: name, email, profile picture with file picker (persisted via `shared_preferences`)
-- **Appearance**: theme mode toggle (System / Light / Dark)
-- **AI Provider**: provider selection, API key, model override (auto-loads on startup)
-- **Reset App**: wipes all data (storage + ChromaDB), returns to bootstrap with "confirm" guard
+- **Profile**: read-only, sourced from the `user` record (Google name, email, photo, linked matric).
+- **Appearance**: theme mode (System / Light / Dark).
+- **Knowledge**: "Sync from Knowledge Base" + API health checks.
+- **Planner**: manual Smart Planner scan.
+- **Logout**: sign out of the Google session (no destructive data wipe in multi-user mode).
+- _(The per-user "AI Provider" key UI is removed — the key is server-managed.)_
 
 ### Theming
-- Material 3 with indigo color scheme
-- Light and dark themes with system default
-- Theme-aware chat bubbles and UI components
+- Material 3 (teal), light/dark with system default, theme-aware components.
 
 ## Architecture
 
-### Streaming Flow
+### Identity & per-user resolution
+```
+Google login → on_login → email allowlist check (UTM) → resolve_user_context()
+  → upsert user:<sub> {name,email,picture,student_id}  → UserContext(user_id, student_id)
+  → stored in main()'s per-connection closures (main(page) runs once per client)
+```
+Tools are module-level singletons shared across users, so the current `UserContext` is carried in a
+**ContextVar** that `tools.execute()` sets around each handler (works across the background threads
+the views spawn). Store factories in `services.py` resolve the owner from it and **fail closed** when
+no context is set — never leaking another user's data. `campus_api` reads the linked `student_id`
+from the same context.
+
+### Streaming flow
 ```
 User sends message
-  → show "MAI is thinking..." (ProgressRing)
-  → background thread produces chunks via stream_response()
-  → asyncio.Queue bridges thread → main event loop
-  → each chunk updates body_text + page.update() from async context
-  → on complete: save to TinyDB + extract memories via Mem0
+  → daily-limit check (usage_daily)         → over limit → friendly message, stop
+  → "MAI is thinking…" (ProgressRing)
+  → background thread produces chunks via stream_response() (server-side key)
+  → asyncio.Queue bridges thread → event loop; each chunk updates the bubble
+  → tool calls run via tools.execute(name, args, user_ctx)  (owner-scoped)
+  → on complete: save session to SurrealDB + store memory (embed via OpenAI, best-effort)
 ```
 
-### Navigation Model
-```
-main.py
-  → ft.Stack([chat_view, settings_view])  # both always in tree
-  → NavigationBar toggles visibility
-  → chat streaming works even when settings_view is visible
-```
+### Data layer (one SurrealDB, three models)
+- **Records** — `user`, `chat_session`, `calendar_event`, `usage_daily` (per-user, `owner`-scoped);
+  campus `lecturer`, `student`, `course`, `club`, `facility`, `booking`.
+- **Graph** — `student ->enrolled-> course` edges; `course.lecturer` record link; timetables embedded
+  on `course`.
+- **Vector** — `memory.embedding` with an `HNSW … DIST COSINE` index for semantic recall.
 
-## Mock Campus Backend (UKB + Facility Booking)
+`src/db/surreal.py` is the blocking client (the SDK is async-first, but all stores are called from
+sync code): `ws://` to the server in Docker, or an embedded `surrealkv://` file for local dev.
 
-Two campus services — the **University Knowledge Base (UKB)** and the **Facility Booking API** —
-are modelled as an **external mock HTTP backend** rather than local files, so the prototype
-demonstrates a realistic *client → service → database* flow (assignment Flow 3/4 and Flow 6).
+## Campus Backend (UKB + Facility Booking)
 
-### Stack & how to run
-
-`docker-compose.yml` (repo root) defines three services:
-
-| Service | Build | Host port | Role |
-|---|---|---|---|
-| `db` | `postgres:18` | _internal only_ | Database (volume `pgdata`) |
-| `api` | `mock_server/` (FastAPI) | `28000` → 8000 | UKB + Facility Booking API |
-| `webapp` | `Dockerfile.web` (Flet) | `8550` | The app served as a website |
-
-```bash
-docker compose up --build          # web: http://localhost:8550  ·  API: http://localhost:28000 (docs at /docs)
-docker compose up --build db api   # backend only (no web app)
-docker compose down                # stop (keeps data in pgdata / appdata volumes)
-docker compose down -v             # stop + wipe volumes (forces a fresh DB re-seed on next up)
-```
-
-The `api` startup `lifespan` waits for Postgres, runs `Base.metadata.create_all`, then calls `seed()`
-(idempotent — no-op once the `students` table is populated), so `up` always boots a fully seeded API.
-The `webapp` is the MAiCampus Flet app built with `Dockerfile.web`; Python runs server-side and reaches
-the API over the compose network at `http://api:8000` (via `MAICAMPUS_API_BASE`). Postgres has **no host
-port** so it won't clash with other stacks on a shared server.
+Two campus services — the **University Knowledge Base (UKB)** and the **Facility Booking API** — are
+modelled as an **external FastAPI backend on SurrealDB**, so the prototype demonstrates a realistic
+*client → service → database* flow (assignment Flow 3/4 and Flow 6). It is a separate Docker service
+with its own deps (`mock_server/requirements.txt`).
 
 ### Endpoints
 
@@ -178,8 +189,8 @@ port** so it won't clash with other stacks on a shared server.
 |---|---|---|
 | GET | `/ukb/courses` (`?code=&day=&lecturer=`) | Course catalogue (filterable) |
 | GET | `/ukb/courses/{code}` | One course + timetable (day, time, room, lecturer) |
-| GET | `/ukb/students/{id}` | Student profile + enrolled course codes |
-| GET | `/ukb/students/{id}/timetable` | Weekly class schedule (enrollments × timetables) |
+| GET | `/ukb/students/{id}` | Student profile + enrolled course codes (via graph) |
+| GET | `/ukb/students/{id}/timetable` | Weekly schedule (enrolled edges × embedded timetables) |
 | GET | `/ukb/clubs` (`?interest=`) | Club directory |
 | GET | `/ukb/facilities` | Facility metadata (hours, capacity, rules) |
 | GET | `/facility/facilities` (`?type=`) | Bookable facilities |
@@ -188,169 +199,136 @@ port** so it won't clash with other stacks on a shared server.
 | GET | `/facility/bookings` (`?student_id=`) | A student's confirmed bookings |
 | DELETE | `/facility/bookings/{id}` | Cancel a booking |
 
-### Data model & seed
-
-Postgres tables (SQLAlchemy ORM in `mock_server/models.py`): `lecturers`, `students`, `courses`,
-`timetable_entries`, `enrollments`, `clubs`, `facilities`, `bookings`. The seed
-(`mock_server/seed.py`) is a UTM / Malaysian dataset **anchored to the assignment's FOL proof** so the
-resolution-refutation scenario is reproducible:
-
-> **MECS0033** *Artificial Intelligence* · **Dr Shafaatunnur Hasan** · **Monday 09:00–11:00 · Room N28**,
-> with student **Darwin Subramaniam (`MEC255043`)** enrolled.
-
-It is broadened with ~8 lecturers, ~12 students (incl. the real Group 2 members), ~8 courses, ~8
-facilities (PSZ discussion rooms, study pods, badminton/futsal courts), ~6 clubs, and a few
-pre-existing bookings so availability/conflict works out of the box.
+The API surface and response schemas are unchanged from the previous Postgres version, so
+`src/campus_api.py` and the OpenAPI docs are identical; only the storage moved to SurrealDB.
 
 ### How the app plugs in
 
 ```
-Flet app                          Mock backend
---------                          ------------
-src/campus_api.py  ──httpx──▶  GET/POST  http://localhost:8000  ──▶  Postgres
+Flet app                                  Campus backend (FastAPI)        SurrealDB
+--------                                  ------------------------        ---------
+src/campus_api.py ──httpx──▶ /ukb/* /facility/* (student_id from ctx) ──▶ records + enrolled graph
   ▲ friendly {"error": ...} on connection failure / non-2xx
 
-src/tools/ukb_tools.py        → query_my_timetable, lookup_course, list_clubs,
-                                get_facility_info, sync_my_classes
-src/tools/facility_tools.py   → search_facilities, check_facility_availability, book_facility
-src/facility_booking/         → Booking tab UI (calls the same tools, not the client directly)
-src/settings/knowledge_settings.py → "Sync from Knowledge Base" button
+src/db/surreal.py ─────────────────────────────────────────────────────▶ per-user records + vectors
 ```
 
-- **Config:** `constants.API_BASE_URL` (default `http://localhost:28000` for a locally-run app; the
-  Docker `webapp` overrides it to `http://api:8000` — both via the `MAICAMPUS_API_BASE` env var) and
-  `constants.DEFAULT_STUDENT_ID` (`MEC255043`, the demo student).
 - **Graceful degradation:** `src/campus_api.py` catches httpx errors and returns `{"error": ...}`, so
-  tools and the Booking UI show a friendly "service unavailable" message when the backend is down —
-  the app never crashes.
-
-### Facility booking flow (Flow 6 — in `book_facility`)
-
-```
-book_facility(facility_id, date, start, end)
-  1. GET /facility/availability        → is the server slot free?      ── no → conflict + suggested slots
-  2. calendar_store.get_events_for_date → does it clash with the         ── yes → conflict + suggested slots
-                                          student's own calendar?
-  3. POST /facility/bookings           → confirm (409-safe)
-  4. calendar_store.create_event(...)  → mirror booking onto the calendar (teal #00897B)
-  → returns {"booked": True, ...}; main.py `_on_tool_executed` raises a notification
-```
-
-The chatbot and the Booking UI share this exact path, so *"book a study pod tomorrow 2–4pm"* in chat
-and the Booking tab behave identically.
-
-### UKB → calendar sync (Flow 5 / Flow 8)
-
-`sync_timetable_from_ukb()` (in `ukb_tools.py`, exposed as the `sync_my_classes` tool and the
-**Settings → Knowledge → "Sync from Knowledge Base"** button) pulls the student's UKB timetable and
-creates recurring weekly `CLASS` events, deduped by `(title, weekday)` so re-running is safe.
+  tools and the Booking UI show a friendly "service unavailable" message when the backend is down.
+- The booking flow (Flow 6) is one chain in `book_facility`: server availability → calendar clash →
+  `POST /facility/bookings` (409-safe) → mirror onto the calendar (teal `#00897B`) → notification.
 
 ### OpenAPI docs
+FastAPI auto-generates **OpenAPI 3.1.0** from `mock_server/schemas.py`: Swagger UI at `/docs`, ReDoc
+at `/redoc`, raw spec at `/openapi.json`.
 
-FastAPI auto-generates **OpenAPI 3.1.0** from the Pydantic schemas in `mock_server/schemas.py`:
-Swagger UI at `/docs`, ReDoc at `/redoc`, raw spec at `/openapi.json`.
+## Deployment (Cloudflare Tunnel)
+
+`docker-compose.yml` includes an optional `cloudflared` service (opt-in `tunnel` profile) to expose
+the webapp at a public domain without inbound ports:
+
+```bash
+# 1. Create a named tunnel in the Cloudflare Zero Trust dashboard; put its token in MAICAMPUS_CF_TUNNEL_TOKEN.
+# 2. In the dashboard, route the public hostname → http://webapp:8550 (cloudflared shares the compose network).
+# 3. Set MAICAMPUS_GOOGLE_REDIRECT_URL=https://<your-domain>/oauth_callback and register it in Google Console.
+docker compose --profile tunnel up -d --build
+```
+
+WebSockets (which Flet's UI needs) pass through automatically; don't put Cloudflare caching in front.
 
 ## Project Structure
 
 ```
 src/
-  main.py                    # App entry — NavigationBar routing, Stack layout
-  ai_providers.py            # Provider abstraction (OpenAI, Claude, Gemini) with streaming
-  theme.py                   # Light/dark theme definitions
-  constants.py               # Paths + API_BASE_URL / DEFAULT_STUDENT_ID for the mock backend
-  campus_api.py              # httpx client for the mock backend (UKB + Facility Booking)
+  main.py                    # Entry — auth gate, per-user wiring, NavigationBar, server AI config
+  ai_providers.py            # Provider streaming + server_config_from_env() (DeepSeek default)
+  services.py                # UserContext + ContextVar; per-user store/memory factories (fail-closed)
+  theme.py                   # Light/dark themes; page padding/spacing
+  constants.py               # APP_DIR + DEFAULT_STUDENT_ID (demo fallback)
+  campus_api.py              # httpx client for the campus backend (student_id from context)
 
-  facility_booking/
-    __init__.py              # Booking tab (Flow 6: search → availability + calendar conflict → confirm)
+  auth/
+    provider.py              # GoogleOAuthProvider + UTM email allowlist + account-chooser params
+    session.py               # resolve_user_context: upsert user, link student, build UserContext
 
-  tools/
-    __init__.py              # ToolDefinition registry (register / get_all / execute)
-    converters.py            # Provider-agnostic → OpenAI/Claude/Gemini tool formats
-    calendar_tools.py        # Calendar event tools
-    planner_tools.py         # Task management + competency tools
-    ukb_tools.py             # UKB lookups (timetable, course, clubs, facility info) + sync
-    facility_tools.py        # Facility search / availability / book_facility (Flow 6 chain)
+  db/
+    surreal.py               # SurrealDB blocking client, schema (HNSW vector index), normalize
 
-  bootstrap/
-    __init__.py              # Bootstrap flow: is_bootstrapped, create_bootstrap_view
-    wizard.py                # Generic step-by-step wizard engine
-    pipeline.py              # Step ordering — add/remove/reorder here
-    steps/
-      welcome.py             # Welcome screen
-      profile.py             # Name, email, photo setup
-      ai_provider.py         # API key configuration
-      done.py                # Confirmation screen
-
-  chat/
-    __init__.py              # Chat view — sidebar, messages, input, sessions, streaming
-    message.py               # ChatMessage widget with avatars, loading state, error state
-    input_bar.py             # Text input + send button
-    session_store.py         # TinyDB wrapper for chat session persistence
-    sidebar.py               # Toggleable session list sidebar
+  usage/
+    limiter.py               # Per-user daily limits (usage_daily) — check_and_increment / record_tokens
 
   memory/
-    __init__.py              # Exports MemoryManager
-    manager.py               # Mem0 + ChromaDB wrapper for semantic knowledge
+    manager.py               # Per-user MemoryManager on SurrealDB vectors (best-effort)
+    embedder.py              # OpenAI embeddings (text-embedding-3-small)
+
+  facility_booking/__init__.py  # Booking tab (Flow 6), per-user, passes UserContext to tools
+  campus_calendar/
+    __init__.py              # Calendar view (injected per-user store)
+    event_store.py           # CalendarEventStore on SurrealDB (owner-scoped)
+
+  chat/
+    __init__.py              # Chat view — sidebar, sessions, identity from Google
+    chat_core.py             # ChatEngine — streaming, tools (UserContext), daily-limit enforcement
+    session_store.py         # SessionStore on SurrealDB (owner-scoped)
+    floating_chat.py, message.py, input_bar.py, sidebar.py
+
+  tools/
+    __init__.py              # Registry + execute(name, args, context) — sets the request ContextVar
+    calendar_tools.py, facility_tools.py, ukb_tools.py, planner_tools.py, converters.py
 
   settings/
-    __init__.py              # Settings page (NavigationRail sections)
-    profile_settings.py      # Profile CRUD (shared_preferences + FilePicker)
-    appearance_settings.py   # Theme mode toggle
-    ai_settings.py           # AI provider config + persistence
-    knowledge_settings.py    # "Sync from Knowledge Base" (UKB → calendar)
-    planner_settings.py      # Manual Smart Planner scan trigger
-    reset_settings.py        # App reset with confirmation
+    __init__.py              # Settings (NavigationRail): Profile, Appearance, Knowledge, Planner, Logout
+    profile_settings.py      # Read-only profile from the user record
+    appearance_settings.py, knowledge_settings.py, planner_settings.py
+    logout_settings.py       # Sign out (was reset_settings.py)
 
-  assets/
-    icon.png                 # App icon
+  bootstrap/                 # Legacy first-run wizard — superseded by the login gate (unused)
 
-mock_server/                 # Mock UTM backend (FastAPI + Postgres 18) — run via Docker Compose
-  Dockerfile                 # python:3.14-slim image
-  requirements.txt           # fastapi, uvicorn, sqlalchemy, psycopg (image-only deps)
-  app.py                     # FastAPI app; lifespan = wait_for_db → create_all → seed
-  db.py                      # SQLAlchemy engine/session from DATABASE_URL + wait_for_db
-  models.py                  # ORM tables (lecturers, students, courses, timetable, …, bookings)
-  schemas.py                 # Pydantic request/response schemas (drive the OpenAPI docs)
-  seed.py                    # UTM/Malaysian seed anchored to the FOL scenario (idempotent)
-  routers/ukb.py             # /ukb/* read endpoints
-  routers/facility.py        # /facility/* read + booking (409 on conflict)
-Dockerfile.web               # Image that serves the Flet app as a website (uv sync --group web)
-docker-compose.yml           # `db` (postgres:18) + `api` (FastAPI) + `webapp` (Flet web) services
+mock_server/                 # Campus backend (FastAPI + SurrealDB) — separate Docker service
+  app.py                     # lifespan = wait_for_db → define_schema → seed
+  db.py                      # SurrealDB blocking client + campus schema + query helper
+  schemas.py                 # Pydantic schemas (drive the OpenAPI docs)
+  seed.py                    # UTM/Malaysian seed (records + enrolled edges), FOL-anchored, idempotent
+  routers/ukb.py, routers/facility.py   # /ukb/* and /facility/* (409 on conflict)
+  requirements.txt           # fastapi, uvicorn, surrealdb (image-only deps)
+
+Dockerfile.web               # Serves the Flet app as a website (uv sync --group web)
+docker-compose.yml           # surreal + api + webapp (+ optional cloudflared tunnel profile)
+.env.sample                  # Env template (.env is gitignored)
 ```
 
 ## Key Dependencies
 
-- `flet` — cross-platform UI framework (Material 3)
-- `anthropic`, `openai`, `google-genai` — AI provider SDKs
-- `mem0ai` — conversation memory extraction
-- `chromadb` — local vector database
-- `tinydb` — JSON-backed document database for chat history
-- `httpx` — HTTP client for the mock campus backend (`src/campus_api.py`)
-- **Mock backend only** (in `mock_server/requirements.txt`, installed in the Docker image — NOT in the
-  app's `pyproject.toml`): `fastapi`, `uvicorn`, `sqlalchemy`, `psycopg`
+- `flet` — cross-platform UI framework (Material 3), incl. native Google OAuth
+- `surrealdb` — single datastore (records + graph + vector) for per-user and campus data
+- `openai` — chat (OpenAI-compatible, incl. DeepSeek) **and** memory embeddings
+- `anthropic`, `google-genai` — alternative chat providers
+- `httpx` — HTTP client for the campus backend (`src/campus_api.py`)
+- **Campus backend only** (in `mock_server/requirements.txt`, Docker image — not in app `pyproject.toml`):
+  `fastapi`, `uvicorn`, `surrealdb`
 
 ## Data Storage
 
 | Data | Location | Mechanism |
 |------|----------|-----------|
-| Profile, API keys, preferences | Platform key-value store | `page.shared_preferences` |
-| Chat sessions | `~/.maicampus/chat_history.json` | TinyDB |
-| Calendar events | `~/.maicampus/calendar_events.json` | TinyDB |
-| AI memories | `~/.maicampus/chroma_db/` | ChromaDB |
-| Courses, timetables, clubs, facilities, bookings | `http://localhost:8000` (`pgdata` volume) | **External** mock backend (Postgres 18) |
+| Users (name, email, photo, matric) | SurrealDB `user` | owner = Google `sub` |
+| Chat sessions | SurrealDB `chat_session` | owner-scoped records |
+| Calendar events | SurrealDB `calendar_event` | owner-scoped records |
+| AI memory | SurrealDB `memory` | owner-scoped + HNSW vector index |
+| Daily usage | SurrealDB `usage_daily` | id `[user_id, date]` |
+| Courses, timetables, clubs, facilities, bookings, enrollments | SurrealDB (campus tables + `enrolled` edges) | seeded by the `api` service |
+| Local-dev per-user data | `~/.maicampus/surreal.db` | embedded `surrealkv://` |
 
 ## Flet Notes
 
-- `page.update()` from background threads may not flush UI — use `page.run_task()` for async updates
-- `FilePicker` is a Service control — use `ft.FilePicker().pick_files()` inline (auto-registers)
-- `shared_preferences` is deprecated in Flet 0.80+ — will need migration to `SharedPreferences()` class
-- SQLite crashes on iOS (flet-dev/flet#5480) — TinyDB used instead for cross-platform compat
+- `main(page)` runs **once per connected client**, so its closures are naturally per-user.
+- Google OAuth: `page.login(provider)`, `page.on_login`, `page.auth.user` (a `User` dict; `.id` =
+  Google `sub`, plus `email`/`name`/`picture`).
+- `page.update()` from background threads may not flush UI — use `page.run_task()` for async updates.
+- The SurrealDB SDK is async-first; this app uses its **blocking** client to keep sync store APIs.
 
 ## Flet Reference
 
-- Docs: https://flet.dev/docs
-- Controls: https://flet.dev/docs/controls
-- Services: https://flet.dev/docs/services/filepicker
-- Theming: https://flet.dev/docs/cookbook/theming
-- Client Storage: https://flet.dev/docs/cookbook/client-storage
-- CLI: https://flet.dev/docs/cli/flet-run
+- Docs: https://flet.dev/docs · Controls: https://flet.dev/docs/controls
+- Authentication: https://flet.dev/docs/cookbook/authentication
+- Theming: https://flet.dev/docs/cookbook/theming · CLI: https://flet.dev/docs/cli/flet-run

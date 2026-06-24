@@ -1,26 +1,43 @@
-import threading
+"""Calendar event persistence, scoped per authenticated user, backed by SurrealDB.
+
+Every event record carries an ``owner`` (``user:<id>``) link; all reads/writes filter by it,
+so calendars are fully isolated between users. Recurrence expansion stays in Python
+(``expand_occurrences``) exactly as before — SurrealDB just replaces the TinyDB file. Public
+signatures are unchanged apart from the new ``user_id`` constructor argument.
+"""
+
+from __future__ import annotations
+
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
-from tinydb import Query, TinyDB
+from surrealdb import RecordID
 
 from campus_calendar.event_model import expand_occurrences
-from constants import CALENDAR_DB_PATH
+from db import get_db, user_ref
 
-_DB_PATH = CALENDAR_DB_PATH
+_TABLE = "calendar_event"
 
-# input = user and uniactivitymanager(service)
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
 class CalendarEventStore:
-    def __init__(self):
-        _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        self._db = TinyDB(str(_DB_PATH))
-        self._lock = threading.Lock()
-        self._q = Query()
+    def __init__(self, user_id: str):
+        self._uid = user_id
+        self._db = get_db()
+
+    def _owner(self) -> RecordID:
+        return user_ref(self._uid)
+
+    def _rid(self, event_id: str) -> RecordID:
+        return RecordID(_TABLE, event_id)
 
     def create_event(self, data: dict) -> dict:
-        now = datetime.now(UTC).isoformat()
+        now = _now()
         event = {
-            "id": str(uuid.uuid4()),
+            "owner": self._owner(),
             "title": data.get("title", ""),
             "type": data.get("type", "custom"),
             "start_datetime": data.get("start_datetime", now),
@@ -38,35 +55,32 @@ class CalendarEventStore:
             "created_at": now,
             "updated_at": now,
         }
-        with self._lock:
-            self._db.insert(event)
-        return event
+        rows = self._db.query("CREATE $rid CONTENT $data", {"rid": self._rid(str(uuid.uuid4())), "data": event})
+        return rows[0]
 
     def get_event(self, event_id: str) -> dict | None:
-        with self._lock:
-            results = self._db.search(self._q.id == event_id)
-        return results[0] if results else None
+        rows = self._db.query(
+            "SELECT * FROM $rid WHERE owner = $owner",
+            {"rid": self._rid(event_id), "owner": self._owner()},
+        )
+        return rows[0] if rows else None
 
     def get_all_events(self) -> list[dict]:
-        with self._lock:
-            return self._db.all()  # type: ignore[return-value]
+        return self._db.query(f"SELECT * FROM {_TABLE} WHERE owner = $owner", {"owner": self._owner()})
 
     def get_events_for_date(self, target: date) -> list[dict]:
         """Get all events (including recurring) that occur on a specific date."""
-        all_events = self.get_all_events()
         result = []
-        for event in all_events:
-            dates = expand_occurrences(event, target, target)
-            if dates:
+        for event in self.get_all_events():
+            if expand_occurrences(event, target, target):
                 result.append(event)
         result.sort(key=lambda e: e.get("start_datetime", ""))
         return result
 
     def get_events_in_range(self, start: date, end: date) -> dict[date, list[dict]]:
         """Get events grouped by date for a date range (expanding recurrences)."""
-        all_events = self.get_all_events()
         by_date: dict[date, list[dict]] = {}
-        for event in all_events:
+        for event in self.get_all_events():
             for d in expand_occurrences(event, start, end):
                 by_date.setdefault(d, []).append(event)
         for events in by_date.values():
@@ -85,9 +99,11 @@ class CalendarEventStore:
         return result
 
     def update_event(self, event_id: str, data: dict):
-        data["updated_at"] = datetime.now(UTC).isoformat()
-        with self._lock:
-            self._db.update(data, self._q.id == event_id)
+        data = {**data, "updated_at": _now()}
+        self._db.query(
+            "UPDATE $rid MERGE $data WHERE owner = $owner",
+            {"rid": self._rid(event_id), "data": data, "owner": self._owner()},
+        )
 
     def get_actionable_tasks(self, days: int = 14) -> list[tuple[date, dict]]:
         """Get upcoming assignments/exams that need attention."""
@@ -97,5 +113,7 @@ class CalendarEventStore:
         ]
 
     def delete_event(self, event_id: str):
-        with self._lock:
-            self._db.remove(self._q.id == event_id)
+        self._db.query(
+            "DELETE $rid WHERE owner = $owner",
+            {"rid": self._rid(event_id), "owner": self._owner()},
+        )

@@ -1,35 +1,38 @@
-# MAiCampus full stack: Postgres 18 + FastAPI mock backend + the Flet app (web).
+# MAiCampus full stack: SurrealDB + FastAPI campus backend + the Flet app (web).
 #   docker compose up --build
-# Web app: http://localhost:8550      Mock API: http://localhost:28000  (docs at /docs)
-# Postgres has no host port (internal to the compose network only).
+# Web app: http://localhost:8550      Campus API: http://localhost:28000  (docs at /docs)
+# SurrealDB has no host port (internal to the compose network only).
+#
+# SurrealDB is the single datastore: campus reference data (graph: courses, enrollments,
+# clubs, bookings) seeded by `api`, and per-user data (records + vector memory) written by
+# `webapp`. Both connect to the same namespace/database (maicampus/app).
 
 services:
-  db:
-    image: postgres:18
-    environment:
-      POSTGRES_USER: maicampus
-      POSTGRES_PASSWORD: maicampus
-      POSTGRES_DB: maicampus
-      PGDATA: /var/lib/postgresql/data/pgdata
+  surreal:
+    image: surrealdb/surrealdb:latest
+    # The image runs as a non-root user by default, which can't write to the root-owned named
+    # volume — run as root so surrealkv can create its datastore under /data.
+    user: root
+    command: start --user root --pass root --bind 0.0.0.0:8000 surrealkv:/data/database.db
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    # No host port — Postgres stays internal to the compose network (shared-server friendly).
+      - surrealdata:/data
+    ports:
+      - "18000:8000"
+    # No host port — SurrealDB stays internal to the compose network (shared-server friendly).
     expose:
-      - "5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U maicampus -d maicampus"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      - "8000"
 
   api:
     build: ./mock_server
     depends_on:
-      db:
-        condition: service_healthy
+      - surreal
     environment:
-      DATABASE_URL: postgresql+psycopg://maicampus:maicampus@db:5432/maicampus
-    # Mock API exposed on host port 28000 (container still listens on 8000).
+      MAICAMPUS_SURREAL_URL: ws://surreal:8000/rpc
+      MAICAMPUS_SURREAL_USER: root
+      MAICAMPUS_SURREAL_PASS: root
+      MAICAMPUS_SURREAL_NS: maicampus
+      MAICAMPUS_SURREAL_DB: app
+    # Campus API exposed on host port 28000 (container still listens on 8000).
     ports:
       - "28000:8000"
 
@@ -39,15 +42,50 @@ services:
       dockerfile: Dockerfile.web
     depends_on:
       - api
+      - surreal
     environment:
       # Flet runs Python server-side, so reach the API by its compose service name.
       MAICAMPUS_API_BASE: http://api:8000
+      # Per-user data lives in the same SurrealDB instance.
+      MAICAMPUS_SURREAL_URL: ws://surreal:8000/rpc
+      MAICAMPUS_SURREAL_USER: root
+      MAICAMPUS_SURREAL_PASS: root
+      MAICAMPUS_SURREAL_NS: maicampus
+      MAICAMPUS_SURREAL_DB: app
+      # Single server-side AI key (DeepSeek by default). Set MAICAMPUS_AI_API_KEY to enable chat.
+      MAICAMPUS_AI_PROVIDER: ${MAICAMPUS_AI_PROVIDER:-deepseek}
+      MAICAMPUS_AI_API_KEY: ${MAICAMPUS_AI_API_KEY:-}
+      MAICAMPUS_AI_MODEL: ${MAICAMPUS_AI_MODEL:-}
+      # Memory embeddings via OpenAI (DeepSeek has no embeddings API). Blank = memory disabled.
+      MAICAMPUS_EMBED_API_KEY: ${MAICAMPUS_EMBED_API_KEY:-}
+      MAICAMPUS_EMBED_MODEL: ${MAICAMPUS_EMBED_MODEL:-text-embedding-3-small}
+      MAICAMPUS_EMBED_DIM: ${MAICAMPUS_EMBED_DIM:-1536}
+      MAICAMPUS_EMBED_BASE_URL: ${MAICAMPUS_EMBED_BASE_URL:-}
+      # Per-user daily message limit.
+      MAICAMPUS_DAILY_LIMIT: ${MAICAMPUS_DAILY_LIMIT:-50}
+      # Google SSO. When unset, the app falls back to a local demo user (single-tenant dev mode).
+      MAICAMPUS_GOOGLE_CLIENT_ID: ${MAICAMPUS_GOOGLE_CLIENT_ID:-}
+      MAICAMPUS_GOOGLE_CLIENT_SECRET: ${MAICAMPUS_GOOGLE_CLIENT_SECRET:-}
+      MAICAMPUS_GOOGLE_REDIRECT_URL: ${MAICAMPUS_GOOGLE_REDIRECT_URL:-http://localhost:8550/oauth_callback}
+      # Restrict sign-in to these email domains (subdomains included). Empty/"*" = any account.
+      MAICAMPUS_ALLOWED_EMAIL_DOMAINS: ${MAICAMPUS_ALLOWED_EMAIL_DOMAINS:-utm.my}
     ports:
       - "8550:8550"
-    volumes:
-      # Persist the app's local stores (calendar_events.json, chat_history.json, chroma_db).
-      - appdata:/root/.maicampus
+
+  # Cloudflare Tunnel — exposes the webapp at your public domain (e.g. maicampus.dw3labs.work)
+  # without opening any inbound ports. Opt-in via the "tunnel" profile so the default stack
+  # doesn't require a token:
+  #   docker compose --profile tunnel up -d --build
+  # Create a *named tunnel* in the Cloudflare Zero Trust dashboard, copy its token into
+  # MAICAMPUS_CF_TUNNEL_TOKEN (.env), and in the dashboard route the public hostname to the
+  # in-network service  http://webapp:8550  (cloudflared shares this compose network).
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${MAICAMPUS_CF_TUNNEL_TOKEN:-}
+    depends_on:
+      - webapp
+    profiles: ["tunnel"]
 
 volumes:
-  pgdata:
-  appdata:
+  surrealdata:
